@@ -1,95 +1,30 @@
 {
-  "schema_version": "agent-tracer-fault-features-v1",
-  "description": "Agent Tracer 已实现的故障特征与证据来源目录",
-  "usage": "用于代码阅读、规则解释和诊断结果标注；特征是候选证据，不是单独的最终判因。",
+  "schema_version": "agent-tracer-fault-taxonomy-v2",
+  "as_of": "2026-09-24",
+  "description": "CCG F1-F12 taxonomy combined with trace-observable rules and AWS/AgentOps observability dimensions.",
+  "interpretation": "A matched signature is evidence for review, not by itself a proven root cause. AWS AgentCore material informs telemetry dimensions, not the names or validation of these failure classes.",
+  "references": [
+    {"id": "aws_agentcore_observability", "type": "official_documentation", "url": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability.html", "accessed": "2026-09-24"},
+    {"id": "dong2024agentops", "type": "preprint", "title": "AgentOps: Enabling Observability of LLM Agents", "year": 2024, "url": "https://arxiv.org/abs/2411.05285"},
+    {"id": "taming_uncertainty_2025", "type": "conference_and_preprint", "title": "Taming Uncertainty via Automation: Observing, Analyzing, and Optimizing Agentic AI Systems", "year": 2025, "doi": "10.1109/ASE63991.2025.00327", "url": "https://arxiv.org/abs/2507.11277"},
+    {"id": "agent_eval_survey_2026", "type": "acl_findings", "title": "A Survey on Evaluation of LLM-based Agents", "year": 2026, "doi": "10.18653/v1/2026.findings-acl.1330"}
+  ],
   "features": [
-    {
-      "id": "tool_execution_failure",
-      "category": "tool_execution",
-      "severity": "high",
-      "signals": ["span_status:error", "status_code_error", "success=false", "error field", "tool execution failed"],
-      "evidence_source": "semantic_trace_validator.classify_tool_result",
-      "related_violation_types": ["tool_execution_failure"]
-    },
-    {
-      "id": "http_failure",
-      "category": "tool_execution",
-      "severity": "high",
-      "signals": ["Status: 4xx", "Status: 5xx", "404", "403", "500", "unauthorized", "forbidden", "service unavailable"],
-      "evidence_source": "semantic_trace_validator.ToolCallValidator",
-      "related_violation_types": ["http_failure"]
-    },
-    {
-      "id": "argument_schema_error",
-      "category": "tool_contract",
-      "severity": "high",
-      "signals": ["required parameter missing", "invalid parameter shape", "schema mismatch"],
-      "evidence_source": "semantic_trace_validator._required_argument_violations",
-      "related_violation_types": ["missing_required_argument", "argument_result_mismatch"]
-    },
-    {
-      "id": "empty_or_malformed_result",
-      "category": "tool_contract",
-      "severity": "medium",
-      "signals": ["empty result", "invalid JSON", "format", "schema", "parameter"],
-      "evidence_source": "semantic_trace_validator.ToolCallValidator and agenttrace_target_pruning.TOOL_DIAGNOSTIC_KEYWORDS",
-      "related_violation_types": ["empty_tool_result"]
-    },
-    {
-      "id": "temporal_mismatch",
-      "category": "semantic_consistency",
-      "severity": "high",
-      "signals": ["requested date absent from result", "stale date", "wrong time window"],
-      "evidence_source": "semantic_trace_validator.ToolCallValidator",
-      "related_violation_types": ["temporal_mismatch"]
-    },
-    {
-      "id": "ungrounded_argument",
-      "category": "semantic_consistency",
-      "severity": "high_or_medium",
-      "signals": ["opaque identifier not in task", "opaque identifier not in prior tool evidence"],
-      "evidence_source": "semantic_trace_validator.ToolCallValidator",
-      "related_violation_types": ["ungrounded_tool_argument"]
-    },
-    {
-      "id": "evidence_propagation_failure",
-      "category": "semantic_consistency",
-      "severity": "context_dependent",
-      "signals": ["NOT_EXPOSED", "REJECTED", "result not consumed", "error evidence reaches final answer"],
-      "evidence_source": "semantic_trace_validator propagation reports",
-      "related_edge_types": ["SemanticOrigin", "SemanticValidation", "SemanticPropagation", "SemanticRejection", "EvidenceExposure"]
-    },
-    {
-      "id": "retry_recovery_failure",
-      "category": "agent_recovery",
-      "severity": "high",
-      "signals": ["retry", "again", "re-run", "rerun", "try another", "Retry edge"],
-      "evidence_source": "agenttrace_target_pruning._is_retry_node and graph edge types",
-      "related_labels": ["retry_or_recovery_failure"]
-    },
-    {
-      "id": "planning_action_drift",
-      "category": "agent_reasoning",
-      "severity": "medium_or_high",
-      "signals": ["need to", "should", "instead", "verify", "rethink", "planning/action bridge inconsistency"],
-      "evidence_source": "agenttrace_target_pruning planning and action context scoring",
-      "related_node_types": ["Planning", "Action", "Fact"]
-    },
-    {
-      "id": "terminal_answer_failure",
-      "category": "agent_outcome",
-      "severity": "high",
-      "signals": ["Error node", "invalid", "wrong", "contradiction", "no evidence", "hallucination", "final conclusion depends on error"],
-      "evidence_source": "agenttrace_target_pruning target selection and failure slicing",
-      "related_node_types": ["Conclusion", "Error"]
-    },
-    {
-      "id": "infrastructure_pressure",
-      "category": "infrastructure",
-      "severity": "context_dependent",
-      "signals": ["high CPU", "high memory", "disk pressure", "container or Kubernetes identity change", "high latency", "communication errors"],
-      "evidence_source": "multilayer_monitor and integrations/jiuwenswarm",
-      "related_layers": ["hardware", "virtualization", "communication", "application"]
-    }
-  ]
+    {"id": "F1", "name": "constraint_omission", "category": "intent_or_comprehension", "signals": ["explicit task constraint absent from downstream plan or answer", "requested date conflicts with returned date"], "evidence_source": ["task contract", "semantic_trace_validator.temporal_mismatch", "Intent-to-Planning/Conclusion graph links"], "implementation": "partial", "review_required": true},
+    {"id": "F2", "name": "unsupported_conclusion_or_hallucination", "category": "reasoning_and_planning", "signals": ["conclusion without supporting Fact evidence", "claim conflicts with observed tool evidence"], "evidence_source": ["Fact-to-Conclusion graph links", "claim-evidence validation"], "implementation": "semantic_review_required", "review_required": true},
+    {"id": "F3", "name": "action_looping", "category": "reasoning_and_planning", "signals": ["same tool and canonical input repeated at least three times", "repeated Action/Fact pattern or Retry edge"], "evidence_source": ["fault_taxonomy.detect_fault_signatures", "Retry graph edges"], "implementation": "candidate_rule", "review_required": true},
+    {"id": "F4", "name": "action_execution_crash", "category": "tool_and_interaction", "signals": ["error span status", "tool success=false or explicit error", "HTTP 4xx/5xx", "timeout or exception"], "evidence_source": ["semantic_trace_validator.classify_tool_result", "semantic violations"], "implementation": "direct_for_tool_and_http_errors", "review_required": false},
+    {"id": "F5", "name": "tool_hallucination_or_capability_overreach", "category": "tool_and_interaction", "signals": ["unknown/unregistered/unavailable tool explicitly rejected"], "evidence_source": ["fault_taxonomy unknown-tool rejection pattern", "tool registry when supplied"], "implementation": "candidate_rule", "review_required": true},
+    {"id": "F6", "name": "crucial_fact_neglect", "category": "information_perception_and_extraction", "signals": ["non-empty tool result has no observed downstream consumer"], "evidence_source": ["semantic_trace_validator.tool_call_checks and claim_evidence_links"], "implementation": "low_confidence_unconsumed_result_candidate", "review_required": true},
+    {"id": "F7", "name": "noise_distraction_or_misattribution", "category": "information_perception_and_extraction", "signals": ["conclusion relies on irrelevant evidence or ignores conflicting relevant evidence"], "evidence_source": ["claim-evidence relevance and counterfactual validation required"], "implementation": "not_auto_detected", "review_required": true},
+    {"id": "F8", "name": "format_or_protocol_breakdown", "category": "tool_and_interaction", "signals": ["FormattingError", "missing required tag", "invalid JSON/format", "protocol or schema mismatch"], "evidence_source": ["fault_taxonomy format pattern", "semantic trace violations"], "implementation": "candidate_rule", "review_required": false},
+    {"id": "F9", "name": "tool_interface_or_argument_schema_mismatch", "category": "tool_and_interaction", "signals": ["missing required argument", "argument/result entity mismatch", "ungrounded opaque argument"], "evidence_source": ["semantic_trace_validator._required_argument_violations", "_explicit_field_consistency_violations", "ungrounded_tool_argument"], "implementation": "direct_and_review_candidates", "review_required": true},
+    {"id": "F10", "name": "error_amplifying_retry", "category": "reasoning_and_recovery", "signals": ["same tool and canonical input repeated with at least two execution failures"], "evidence_source": ["fault_taxonomy repeated failed attempt candidate", "Retry edges"], "implementation": "candidate_rule", "review_required": true},
+    {"id": "F11", "name": "error_oblivious_finalization", "category": "reasoning_and_recovery", "signals": ["error span precedes final-answer span"], "evidence_source": ["fault_taxonomy span order", "new evidence/recovery validation required"], "implementation": "candidate_rule", "review_required": true},
+    {"id": "F12", "name": "cascading_error_surface", "category": "tool_and_interaction", "signals": ["multiple error spans share a parent action/span"], "evidence_source": ["fault_taxonomy shared-parent error cluster"], "implementation": "candidate_rule", "review_required": true}
+  ],
+  "operations_dimensions": {
+    "source": "AWS Bedrock AgentCore Observability and AgentOps literature; operational dimensions are separate from root-cause taxonomy.",
+    "dimensions": ["session_and_agent_identity", "workflow_spans_and_intermediate_outputs", "latency_and_duration", "error_and_retry_rates", "token_usage_and_cost", "resource_and_deployment_metadata", "task_quality_and_safety"]
+  }
 }

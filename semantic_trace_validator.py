@@ -813,7 +813,7 @@ class ToolCallValidator:
             check["propagation_state"] = report.get("state", "NOT_EXPOSED")
             check["reaches_final_answer"] = bool(report.get("reaches_final_answer"))
 
-        return {
+        result = {
             "tool_call_checks": checks,
             "semantic_observations": checks,
             "semantic_violations": violations,
@@ -822,6 +822,10 @@ class ToolCallValidator:
             "propagation_reports": propagation_reports,
             "final_answer_span_ids": final_answer_ids,
         }
+        from fault_taxonomy import detect_fault_signatures
+
+        result["fault_taxonomy_findings"] = detect_fault_signatures(trace_data, result)
+        return result
 
 
 def analyze_semantic_trace(

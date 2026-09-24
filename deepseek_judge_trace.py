@@ -413,6 +413,7 @@ def build_raw_trace_digest(trace_obj, max_spans=80):
         "span_timeline_head": selected_spans,
         "task_contracts": semantic_analysis.get("task_contracts", []),
         "semantic_observations": semantic_analysis.get("semantic_observations", []),
+        "fault_taxonomy_candidates": semantic_analysis.get("fault_taxonomy_findings", []),
         "semantic_violations": semantic_analysis.get("semantic_violations", []),
         "claim_evidence_links": semantic_analysis.get("claim_evidence_links", []),
         "delivery_links": semantic_analysis.get("delivery_links", []),
