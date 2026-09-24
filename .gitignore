@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+.cache/
+.pytest_cache/
+output/
+outputs/
+output_graphs*/
+pipeline_runs/
+trail_data/
+*_data/

@@ -1,0 +1,1722 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Agent Tracer Visualizer</title>
+<script src="https://unpkg.com/vis-network@9.1.9/dist/vis-network.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.9/dist/dist/vis-network.min.css">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #111315; color: #e7e9ea; height: 100vh; display: flex; flex-direction: column; }
+header { padding: 10px 20px; background: #191d20; border-bottom: 1px solid #34393e; display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+header h1 { font-size: 17px; color: #e94560; white-space: nowrap; }
+#upload-area { border: 2px dashed #0f3460; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 13px; color: #aaa; transition: border-color .2s; white-space: nowrap; }
+#upload-area:hover { border-color: #e94560; }
+#file-input { display: none; }
+#batch-upload-btn { border: 1px solid #45505a; background: #15181b; color: #c5cbd0; border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+#batch-upload-btn:hover { border-color: #e94560; color: #fff; }
+#status { font-size: 12px; color: #aaa; margin-left: auto; }
+#spinner { display: none; width: 16px; height: 16px; border: 2px solid #333; border-top-color: #e94560; border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+main { display: flex; flex: 1; overflow: hidden; }
+#graph-container { flex: 1; position: relative; min-width: 0; }
+#network { width: 100%; height: 100%; }
+#sidebar { width: min(470px, 42vw); background: #171a1d; border-left: 1px solid #34393e; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; }
+.panel { background: #22262a; border: 1px solid #34393e; border-radius: 6px; padding: 11px 13px; }
+.panel h3 { font-size: 12px; color: #e94560; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.stat-item { background: #15181b; border-radius: 4px; padding: 5px 8px; }
+.stat-label { font-size: 10px; color: #888; }
+.stat-value { font-size: 15px; font-weight: bold; }
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; margin-bottom: 3px; }
+.dot { width: 14px; height: 14px; flex-shrink: 0; }
+.legend-edge { display: flex; align-items: center; gap: 7px; font-size: 12px; margin-bottom: 3px; }
+.edge-line { width: 28px; height: 3px; flex-shrink: 0; border-radius: 2px; }
+.edge-filter-actions { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px; }
+.edge-filter-preset { border:1px solid #45505a; background:#15181b; color:#aeb4b9; border-radius:4px; padding:4px 7px; font-size:10px; cursor:pointer; font-family:inherit; }
+.edge-filter-preset:hover { border-color:#e94560; color:#fff; }
+.edge-filter-list { display:flex; flex-wrap:wrap; gap:5px; }
+.edge-filter-btn { display:inline-flex; align-items:center; gap:5px; border:1px solid #45505a; background:#15181b; color:#737b82; border-radius:999px; padding:4px 8px; font-size:10px; cursor:pointer; font-family:inherit; transition:opacity .15s,border-color .15s,background .15s; }
+.edge-filter-btn .edge-swatch { width:16px; height:3px; border-radius:2px; flex-shrink:0; }
+.edge-filter-btn.active { color:#f2f3f4; background:#292e33; }
+.edge-filter-btn:disabled { opacity:.35; cursor:not-allowed; }
+.edge-filter-meta { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:8px; font-size:10px; color:#858d94; }
+.edge-label-control { display:flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer; }
+.edge-label-control input { accent-color:#e94560; }
+.agent-actions { display:flex; gap:5px; margin-bottom:8px; }
+.agent-action-btn { border:1px solid #45505a; background:#15181b; color:#aeb4b9; border-radius:4px; padding:4px 7px; font-size:10px; cursor:pointer; font-family:inherit; }
+.agent-action-btn:hover { border-color:#f59e0b; color:#fff; }
+.agent-list { display:flex; flex-direction:column; gap:5px; }
+.agent-item { display:grid; grid-template-columns:10px 1fr auto; align-items:center; gap:7px; border:1px solid #3d444a; background:#15181b; border-radius:5px; padding:6px 7px; cursor:pointer; text-align:left; color:#d5d8da; font-family:inherit; }
+.agent-item:hover { border-color:#f59e0b; }
+.agent-item.main { cursor:default; opacity:.85; }
+.agent-color { width:8px; height:26px; border-radius:3px; }
+.agent-copy { min-width:0; }
+.agent-name { display:block; font-size:11px; font-weight:700; }
+.agent-task { display:block; font-size:9px; color:#848c92; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px; }
+.agent-count { font-size:9px; color:#9da4aa; white-space:nowrap; }
+.agent-summary { margin-top:7px; color:#858d94; font-size:10px; }
+/* four-layer monitoring */
+.monitor-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.monitor-head h3 { margin-bottom:0; }
+.monitor-overall { font-size:9px; font-weight:700; padding:2px 6px; border-radius:999px; background:#34393e; color:#cbd0d4; }
+.monitor-overall.healthy { background:#214d37; color:#a9e8c4; }
+.monitor-overall.warning { background:#59441b; color:#f4d27a; }
+.monitor-overall.critical { background:#5c2629; color:#ffb4b6; }
+.monitor-overall.unknown { background:#34393e; color:#aeb5ba; }
+.monitor-coverage { display:flex; align-items:center; gap:7px; color:#90989e; font-size:10px; margin-bottom:8px; }
+.monitor-bar { flex:1; height:5px; background:#15181b; border-radius:999px; overflow:hidden; }
+.monitor-bar-fill { height:100%; background:linear-gradient(90deg,#4e79a7,#59a14f); }
+.layer-stack { display:flex; flex-direction:column; gap:7px; }
+.layer-card { border:1px solid #3b4248; border-left:4px solid #59636b; border-radius:5px; background:#15181b; padding:7px 8px; }
+.layer-card.healthy { border-left-color:#59a14f; }
+.layer-card.warning { border-left-color:#edc948; }
+.layer-card.critical { border-left-color:#e15759; }
+.layer-card.unknown { border-left-color:#70777d; }
+.layer-title { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11px; font-weight:700; color:#eef0f1; }
+.layer-source { color:#747d84; font-size:9px; font-weight:400; margin-top:1px; }
+.layer-status { font-size:9px; color:#9ca4aa; white-space:nowrap; }
+.layer-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; margin-top:6px; }
+.layer-metric { min-width:0; background:#20252a; border-radius:3px; padding:4px 5px; }
+.layer-metric-label { color:#858d94; font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.layer-metric-value { color:#e5e8ea; font-size:11px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.layer-highlights { margin-top:5px; color:#9da5aa; font-size:9px; line-height:1.45; }
+.monitor-refresh { border:1px solid #45505a; background:#15181b; color:#aeb4b9; border-radius:4px; padding:2px 6px; font-size:9px; cursor:pointer; }
+.monitor-refresh:hover { border-color:#59a14f; color:#fff; }
+/* scores */
+.score-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 3px 0; border-bottom: 1px solid #15181b; }
+.score-row:last-child { border-bottom: none; }
+.score-val { font-weight: bold; font-size: 14px; }
+.score-val.high { color: #59a14f; }
+.score-val.mid { color: #edc948; }
+.score-val.low { color: #e15759; }
+/* errors */
+.err-item { background: #15181b; border-radius: 4px; padding: 7px 9px; margin-bottom: 6px; border-left: 3px solid #e15759; cursor: pointer; }
+.err-item:hover { border-left-color: #f28e2b; }
+.err-item .ei-cat { font-size: 10px; color: #e15759; font-weight: bold; }
+.err-item .ei-impact { font-size: 10px; color: #888; float: right; }
+.err-item .ei-desc { font-size: 11px; color: #ccc; margin-top: 3px; }
+.err-item .ei-ev { font-size: 10px; color: #888; margin-top: 3px; font-style: italic; word-break: break-all; }
+.loc-actions { display:flex; gap:6px; margin-top:6px; }
+.loc-btn { border:1px solid #0f3460; background:#0f3460; color:#ccc; border-radius:4px; padding:3px 7px; font-size:10px; cursor:pointer; font-family:inherit; }
+.loc-btn:hover { border-color:#e94560; color:#fff; }
+.loc-btn.primary { background:#e94560; border-color:#e94560; color:#fff; }
+/* root causes */
+.rc-item { background: #15181b; border-radius: 4px; padding: 7px 9px; margin-bottom: 6px; border-left: 3px solid #d48bca; cursor: pointer; }
+.rc-item:hover { border-left-color: #e94560; }
+.rc-item .rc-mod { font-size: 10px; color: #b07aa1; font-weight: bold; }
+.rc-item .rc-conf { font-size: 10px; color: #888; float: right; }
+.rc-item .rc-reason { font-size: 11px; color: #ccc; margin-top: 3px; }
+/* taxonomy */
+.tax-item { display: flex; align-items: flex-start; gap: 7px; font-size: 11px; padding: 4px 0; border-bottom: 1px solid #1a1a2e; }
+.tax-item:last-child { border-bottom: none; }
+.tax-badge { font-size: 10px; font-weight: bold; padding: 1px 5px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+.tax-badge.matched { background: #e15759; color: #fff; }
+.tax-badge.unmatched { background: #333; color: #888; }
+.tax-name { color: #ccc; }
+.tax-conf { color: #888; font-size: 10px; }
+/* diagnosis */
+.diagnosis { font-size: 12px; color: #e0e0e0; line-height: 1.6; }
+/* batch diagnosis */
+.batch-summary { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; margin-bottom:8px; }
+.batch-stat { background:#15181b; border-radius:4px; padding:6px 7px; text-align:center; }
+.batch-stat b { display:block; font-size:16px; color:#f0f2f3; }
+.batch-stat span { font-size:9px; color:#858d94; }
+.batch-results { display:flex; flex-direction:column; gap:5px; max-height:280px; overflow-y:auto; }
+.batch-result { display:grid; grid-template-columns:10px 1fr auto; align-items:center; gap:7px; border:1px solid #3d444a; background:#15181b; border-radius:5px; padding:7px; cursor:pointer; text-align:left; color:#d5d8da; font-family:inherit; }
+.batch-result:hover { border-color:#f28e2b; }
+.batch-result.failed { cursor:default; opacity:.8; }
+.batch-result .batch-dot { width:8px; height:8px; border-radius:50%; background:#59a14f; }
+.batch-result.failed .batch-dot { background:#e15759; }
+.batch-result strong { display:block; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.batch-result small { display:block; margin-top:2px; font-size:9px; color:#858d94; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.batch-result .batch-state { font-size:9px; color:#9be2c1; white-space:nowrap; }
+.batch-result.failed .batch-state { color:#ffb4b6; }
+/* readable diagnosis report */
+.report-hero { border-left: 4px solid #e15759; padding: 2px 0 2px 10px; }
+.report-kicker { display:flex; align-items:center; gap:7px; margin-bottom:6px; font-size:10px; color:#9da3a8; }
+.severity-badge { padding:2px 6px; border-radius:3px; font-size:10px; font-weight:700; color:#fff; }
+.severity-badge.high { background:#c74447; }
+.severity-badge.medium { background:#b7791f; }
+.severity-badge.low { background:#348052; }
+.severity-badge.unknown { background:#555b60; }
+.report-overall { font-size:13px; line-height:1.65; color:#f3f4f5; white-space:pre-wrap; }
+.report-section { margin-top:13px; padding-top:11px; border-top:1px solid #3a3f44; }
+.report-section-title { font-size:11px; color:#f0b44c; font-weight:700; margin-bottom:7px; }
+.report-rc { background:#15181b; border-left:3px solid #e15759; padding:9px 10px; margin-bottom:7px; border-radius:4px; cursor:pointer; }
+.report-rc:hover { background:#1b1f22; border-left-color:#f0b44c; }
+.report-rc-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.report-rc-title { font-size:12px; font-weight:700; color:#f2f3f4; }
+.report-meta { font-size:10px; color:#8e969c; white-space:nowrap; }
+.report-label { margin-top:7px; font-size:10px; color:#8e969c; }
+.report-text { margin-top:2px; font-size:11px; line-height:1.55; color:#cdd1d4; white-space:pre-wrap; }
+.report-impact { color:#f0c36c; }
+.relation-item { display:grid; grid-template-columns:auto 1fr; gap:8px; align-items:start; margin-bottom:7px; }
+.relation-tag { background:#344d45; color:#9be2c1; border-radius:3px; padding:2px 6px; font-size:10px; white-space:nowrap; }
+.relation-copy { font-size:11px; line-height:1.5; color:#cdd1d4; }
+.chain-list { position:relative; margin-left:7px; }
+.chain-step { position:relative; padding:0 0 12px 19px; cursor:pointer; }
+.chain-step:not(:last-child)::before { content:""; position:absolute; left:4px; top:10px; bottom:0; width:1px; background:#626a70; }
+.chain-step::after { content:""; position:absolute; left:0; top:3px; width:9px; height:9px; border-radius:50%; background:#f0b44c; border:2px solid #22262a; }
+.chain-stage { font-size:11px; font-weight:700; color:#eceeef; }
+.chain-location { font-size:10px; color:#76b7b2; margin-left:5px; user-select:all; }
+.chain-event { font-size:11px; color:#bfc4c8; line-height:1.45; margin-top:2px; }
+.priority-item { display:grid; grid-template-columns:22px 1fr; gap:7px; margin-bottom:8px; }
+.priority-num { width:20px; height:20px; border-radius:3px; background:#e15759; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.priority-target { font-size:11px; font-weight:700; color:#eceeef; }
+.priority-copy { font-size:10px; color:#bfc4c8; line-height:1.45; margin-top:2px; }
+.report-conclusion { background:#17322a; border-left:3px solid #59a14f; border-radius:4px; padding:8px 10px; font-size:11px; line-height:1.55; color:#d8eee4; }
+/* node detail */
+#node-detail { display: none; }
+.nd-type { font-size: 11px; font-weight: bold; margin-bottom: 4px; }
+.nd-content { font-size: 11px; color: #ccc; word-break: break-word; max-height: 180px; overflow-y: auto; white-space: pre-wrap; }
+.empty { font-size: 12px; color: #555; text-align: center; padding: 16px; }
+/* span detail drawer */
+#span-drawer { display:none; position:fixed; right:min(470px, 42vw); top:0; bottom:0; width:360px; background:#191d20; border-left:1px solid #f28e2b; z-index:100; overflow-y:auto; padding:14px; }
+#span-drawer h3 { font-size:12px; color:#f28e2b; margin-bottom:10px; text-transform:uppercase; letter-spacing:.5px; display:flex; justify-content:space-between; align-items:center; }
+#span-drawer h3 button { background:none; border:none; color:#888; cursor:pointer; font-size:16px; line-height:1; }
+#span-drawer h3 button:hover { color:#fff; }
+.sp-row { margin-bottom:8px; }
+.sp-label { font-size:10px; color:#888; margin-bottom:2px; }
+.sp-val { font-size:11px; color:#e0e0e0; background:#0f3460; border-radius:4px; padding:5px 8px; word-break:break-all; white-space:pre-wrap; max-height:160px; overflow-y:auto; }
+.sp-val.ok { border-left:3px solid #59a14f; }
+.sp-val.err { border-left:3px solid #e15759; }
+.sp-id { font-size:10px; color:#76b7b2; user-select:all; }
+/* tabs */
+.tabs { display:flex; gap:4px; margin-bottom:10px; flex-shrink:0; }
+.tab-btn { flex:1; padding:6px; background:#0f3460; border:none; color:#aaa; font-size:12px; border-radius:4px; cursor:pointer; font-family:inherit; }
+.tab-btn.active { background:#e94560; color:#fff; }
+/* trace tree */
+#trace-view { display:none; flex:1; overflow-y:auto; background:#111315; padding:10px; font-size:11px; font-family:"Microsoft YaHei",monospace; }
+.tr-node { margin:2px 0; }
+.tr-toggle { cursor:pointer; user-select:none; color:#888; margin-right:4px; }
+.tr-name { font-weight:bold; }
+.tr-name.ok { color:#59a14f; }
+.tr-name.error { color:#e15759; }
+.tr-name.unset { color:#76b7b2; }
+.tr-comp { font-size:10px; color:#f28e2b; margin-left:6px; }
+.tr-sid { font-size:10px; color:#555; margin-left:6px; user-select:all; }
+.tr-row { border-radius:3px; padding:2px 4px; }
+.tr-row:hover { background:#0f3460; }
+.tr-row.tr-has-rc { background:rgba(242,142,43,.12); border-left:3px solid #f28e2b; }
+.tr-row.tr-has-error { background:rgba(225,87,89,.10); border-left:3px solid #e15759; }
+.tr-row.tr-focus { outline:2px solid #fff; background:rgba(233,69,96,.25); }
+.tr-badge { display:inline-block; margin-left:5px; padding:1px 5px; border-radius:3px; font-size:10px; font-weight:bold; color:#fff; }
+.tr-badge.rc { background:#f28e2b; }
+.tr-badge.err { background:#e15759; }
+.tr-children { padding-left:18px; border-left:1px solid #222; margin-left:6px; }
+.tr-detail { display:none; background:#0f3460; border-radius:3px; padding:5px 8px; margin:3px 0 3px 20px; color:#ccc; white-space:pre-wrap; word-break:break-word; max-height:120px; overflow-y:auto; }
+.comp-box { background:#0a2540; border:1px solid #f28e2b; border-radius:5px; padding:8px 10px; margin-bottom:8px; }
+.comp-name { font-size:12px; color:#f28e2b; font-weight:bold; }
+.comp-file { font-size:10px; color:#888; margin-top:2px; user-select:all; }
+.comp-aspects { font-size:10px; color:#aaa; margin-top:4px; }
+.fix-btn { display:block; width:100%; margin-top:8px; padding:6px; background:#e94560; border:none; border-radius:4px; color:#fff; font-size:12px; cursor:pointer; font-family:inherit; }
+.fix-btn:hover { background:#c73450; }
+.fix-btn:disabled { background:#555; cursor:wait; }
+.fix-box { background:#0f3460; border-left:3px solid #59a14f; border-radius:4px; padding:8px; font-size:11px; color:#e0e0e0; white-space:pre-wrap; word-break:break-word; margin-top:8px; max-height:400px; overflow-y:auto; line-height:1.5; }
+@media (max-width: 900px) {
+  header { flex-wrap:wrap; padding:9px 10px; gap:7px; }
+  header h1 { width:100%; }
+  #upload-area { max-width:calc(100vw - 190px); overflow:hidden; text-overflow:ellipsis; }
+  #batch-upload-btn { margin-left:auto; }
+  #status { width:100%; margin-left:0; }
+  main { flex-direction:column; overflow:auto; }
+  #graph-container { min-height:55vh; }
+  #sidebar { width:100%; max-height:none; overflow:visible; border-left:none; border-top:1px solid #34393e; }
+  #span-drawer { right:0; width:min(92vw, 380px); }
+}
+@media (max-width: 520px) {
+  .batch-summary { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Tracer Visualizer</h1>
+  <div id="upload-area" onclick="document.getElementById('file-input').click()">上传 Trace JSON / .trace</div>
+  <input type="file" id="file-input" accept=".json,.trace,application/json">
+  <button id="batch-upload-btn" type="button" title="一次选择多个 Trace 文件">批量诊断</button>
+  <input type="file" id="batch-file-input" accept=".json,.trace,application/json" multiple style="display:none">
+  <label style="font-size:12px;color:#aaa;display:flex;align-items:center;gap:4px;white-space:nowrap">
+    <input type="checkbox" id="run-judge" style="accent-color:#e94560"> LLM诊断
+  </label>
+  <button class="tab-btn" id="judge-btn" style="width:auto;padding:6px 10px;flex:0 0 auto" disabled>运行根因分析</button>
+  <button class="tab-btn" id="export-md-btn" style="width:auto;padding:6px 10px;flex:0 0 auto" title="将当前诊断结果导出为 Markdown 文件" disabled>导出诊断 .md</button>
+  <div id="spinner"></div>
+  <span id="status">请上传 trace 文件</span>
+</header>
+<main>
+  <div id="graph-container">
+    <div class="tabs" style="position:absolute;top:10px;left:10px;z-index:10;width:220px;">
+      <button class="tab-btn active" id="tab-graph" onclick="switchTab('graph')">因果图</button>
+      <button class="tab-btn" id="tab-trace" onclick="switchTab('trace')">原始 Trace</button>
+    </div>
+    <div id="network"></div>
+    <div id="trace-view"></div>
+  </div>
+  <div id="span-drawer">
+    <h3>Span 详情 <button onclick="document.getElementById('span-drawer').style.display='none'">✕</button></h3>
+    <div id="span-drawer-content"></div>
+  </div>
+  <div id="sidebar">
+    <div class="panel" id="panel-batch" style="display:none">
+      <h3>批量诊断结果</h3>
+      <div class="batch-summary">
+        <div class="batch-stat"><b id="batch-total">0</b><span>文件</span></div>
+        <div class="batch-stat"><b id="batch-success">0</b><span>成功</span></div>
+        <div class="batch-stat"><b id="batch-failed">0</b><span>失败</span></div>
+        <div class="batch-stat"><b id="batch-diagnosed">0</b><span>已诊断</span></div>
+      </div>
+      <div id="batch-results" class="batch-results"></div>
+    </div>
+    <div class="panel" id="panel-report" style="display:none">
+      <h3>诊断说明</h3>
+      <div id="report-content"></div>
+    </div>
+    <div class="panel">
+      <h3>图统计</h3>
+      <div class="stat-grid">
+        <div class="stat-item"><div class="stat-label">节点</div><div class="stat-value" id="s-nodes">-</div></div>
+        <div class="stat-item"><div class="stat-label">边</div><div class="stat-value" id="s-edges">-</div></div>
+      </div>
+      <div id="type-stats" style="margin-top:8px;"></div>
+    </div>
+    <div class="panel" id="panel-multilayer">
+      <div class="monitor-head">
+        <h3>多层次监控系统原型</h3>
+        <span class="monitor-overall unknown" id="monitor-overall">采集中</span>
+      </div>
+      <div class="monitor-coverage">
+        <span id="monitor-coverage-label">硬件层 · 虚拟化层 · 通信层 · 应用层</span>
+        <div class="monitor-bar"><div class="monitor-bar-fill" id="monitor-coverage-fill" style="width:0%"></div></div>
+        <button class="monitor-refresh" id="monitor-refresh" title="刷新本机实时资源">刷新</button>
+      </div>
+      <div class="layer-stack" id="layer-stack"><div class="empty">正在采集本机监控快照…</div></div>
+    </div>
+    <div class="panel" id="agent-panel">
+      <h3>Agent 视图</h3>
+      <div class="agent-actions">
+        <button class="agent-action-btn" id="collapse-agents">折叠全部 Subagent</button>
+        <button class="agent-action-btn" id="expand-agents">展开全部</button>
+      </div>
+      <div class="agent-list" id="agent-list"></div>
+      <div class="agent-summary" id="agent-summary">尚未加载 Agent</div>
+    </div>
+    <div class="panel" id="edge-filter-panel">
+      <h3>边显示</h3>
+      <div class="edge-filter-actions">
+        <button class="edge-filter-preset" data-edge-preset="core">核心链路</button>
+        <button class="edge-filter-preset" data-edge-preset="semantic">仅语义边</button>
+        <button class="edge-filter-preset" data-edge-preset="all">全部显示</button>
+        <button class="edge-filter-preset" data-edge-preset="none">全部隐藏</button>
+      </div>
+      <div class="edge-filter-list" id="edge-filter-list"></div>
+      <div class="edge-filter-meta">
+        <span id="edge-filter-summary">尚未加载图</span>
+        <label class="edge-label-control"><input type="checkbox" id="edge-label-toggle">显示边标签</label>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>图例</h3>
+      <div id="legend"></div>
+    </div>
+    <div class="panel" id="node-detail">
+      <h3>节点详情</h3>
+      <div class="nd-type" id="nd-type"></div>
+      <div class="nd-content" id="nd-content"></div>
+    </div>
+    <div class="panel" id="panel-diagnosis" style="display:none"><h3>诊断状态</h3><div id="diagnosis-content"></div></div>
+    <div class="panel" id="panel-errors" style="display:none">
+      <h3>检测到的错误</h3>
+      <div id="errors-content"></div>
+    </div>
+    <div class="panel" id="panel-rc" style="display:none">
+      <h3>根因分析</h3>
+      <div id="rc-content"></div>
+    </div>
+    <div class="panel" id="panel-tax" style="display:none">
+      <h3>故障分类 (CCG Taxonomy)</h3>
+      <div id="tax-content"></div>
+    </div>
+  </div>
+</main>
+<script>
+// node type → { color, borderColor }
+const NODE_STYLES = {
+  Intent:     { color: "#4e79a7", borderColor: "#2c5282" },
+  Planning:   { color: "#f28e2b", borderColor: "#c47a1e" },
+  Action:     { color: "#59a14f", borderColor: "#3d7a35" },
+  Fact:       { color: "#76b7b2", borderColor: "#4a9490" },
+  Conclusion: { color: "#edc948", borderColor: "#c9a820" },
+  Error:      { color: "#e15759", borderColor: "#ffffff" },
+};
+
+// Edge types form three layers: execution structure, semantic evidence, and inferred cognition.
+const EDGE_STYLES = {
+  Temporal:            { color: "#70777d", dashes: [2, 5], group: "结构", defaultVisible: false },
+  Call:                { color: "#59a14f", dashes: false,  group: "结构", defaultVisible: true },
+  Observation:         { color: "#4e79a7", dashes: [6, 3], group: "结构", defaultVisible: true },
+  Retry:               { color: "#e15759", dashes: [3, 3], group: "结构", defaultVisible: true },
+  AgentSpawn:          { color: "#f59e0b", dashes: [8, 3], group: "Agent", defaultVisible: true },
+  SubagentReturn:      { color: "#8b5cf6", dashes: [6, 3], group: "Agent", defaultVisible: true },
+  SemanticOrigin:      { color: "#f28e2b", dashes: [8, 3], group: "语义", defaultVisible: true },
+  SemanticValidation:  { color: "#ff6b81", dashes: false,  group: "语义", defaultVisible: true },
+  SemanticPropagation: { color: "#2dd4a8", dashes: false,  group: "语义", defaultVisible: true },
+  SemanticRejection:   { color: "#ef4444", dashes: [3, 3], group: "语义", defaultVisible: true },
+  EvidenceExposure:    { color: "#38bdf8", dashes: [2, 4], group: "语义", defaultVisible: false },
+  Cognitive:           { color: "#b07aa1", dashes: [8, 4], group: "推断", defaultVisible: false },
+};
+
+const SEMANTIC_EDGE_TYPES = new Set([
+  "SemanticOrigin", "SemanticValidation", "SemanticPropagation",
+  "SemanticRejection", "EvidenceExposure",
+]);
+const CORE_EDGE_TYPES = new Set([
+  "Call", "Observation", "Retry", "AgentSpawn", "SubagentReturn", "SemanticOrigin",
+  "SemanticValidation", "SemanticPropagation", "SemanticRejection",
+]);
+const PROPAGATION_PATH_EDGE_TYPES = new Set([
+  "Call", "Observation", "Retry", "AgentSpawn", "SubagentReturn", "Cognitive", "SemanticOrigin",
+  "SemanticValidation", "SemanticPropagation",
+]);
+
+// build legend
+const legendEl = document.getElementById("legend");
+legendEl.innerHTML = "<div style='font-size:10px;color:#888;margin-bottom:4px'>节点类型</div>";
+Object.entries(NODE_STYLES).forEach(([t, s]) => {
+  legendEl.innerHTML += `<div class="legend-item">
+    <div class="dot" style="background:${s.color};border-radius:3px;border:2px solid ${s.borderColor}"></div>
+    <span>${t}</span>
+  </div>`;
+});
+legendEl.innerHTML += `<div class="legend-item">
+  <div class="dot" style="background:#252a2f;border-radius:3px;border:3px solid #8b5cf6"></div>
+  <span>Subagent 集群</span>
+</div>`;
+legendEl.innerHTML += `<div style="font-size:10px;color:#7f878d;line-height:1.5;margin:5px 0 7px">
+  填充色 = 节点类型；彩色边框 = Agent；橙色外框 = 当前传播路径
+</div>`;
+legendEl.innerHTML += "<div style='font-size:10px;color:#888;margin:6px 0 4px'>边类型</div>";
+Object.entries(EDGE_STYLES).forEach(([t, s]) => {
+  const dash = s.dashes ? `repeating-linear-gradient(90deg,${s.color} 0,${s.color} ${s.dashes[0]}px,transparent ${s.dashes[0]}px,transparent ${s.dashes[0]+s.dashes[1]}px)` : `linear-gradient(${s.color},${s.color})`;
+  legendEl.innerHTML += `<div class="legend-edge">
+    <div class="edge-line" style="background:${dash}"></div>
+    <span>${t}</span>
+  </div>`;
+});
+
+let network = null, nodesData = [], spanIndex = {}, judgeCtxMap = {}, traceSpanMap = {};
+let edgeTypeCounts = {}, visibleEdgeTypes = new Set(), edgeLabelsVisible = false;
+let agentsData = [], collapsedAgentIds = new Set();
+const AGENT_COLORS = ["#f59e0b", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16", "#f97316"];
+let traceAnnotations = {}, traceSpanNodeIds = {};
+let lastTraceFile = null;
+let lastTraceName = "";
+let latestParseData = null;
+let batchResults = [];
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+const MONITOR_STATUS_LABELS = {
+  healthy: "正常",
+  warning: "告警",
+  critical: "严重",
+  unknown: "待补充",
+};
+
+function monitorMetricValue(metric) {
+  if (metric.value === null || metric.value === undefined || metric.value === "") return "—";
+  const value = typeof metric.value === "number" && !Number.isInteger(metric.value)
+    ? metric.value.toFixed(metric.value < 10 ? 2 : 1).replace(/\.0+$/, "")
+    : String(metric.value);
+  return `${value}${metric.unit ? ` ${metric.unit}` : ""}`;
+}
+
+function renderMultilayerMonitoring(payload) {
+  const layers = (payload || {}).layers || [];
+  const overall = (payload || {}).overall_status || "unknown";
+  const coverage = (payload || {}).coverage || {};
+  const overallEl = document.getElementById("monitor-overall");
+  overallEl.className = `monitor-overall ${overall}`;
+  overallEl.textContent = MONITOR_STATUS_LABELS[overall] || overall;
+  const percentage = Number(coverage.percentage || 0);
+  document.getElementById("monitor-coverage-fill").style.width = `${Math.max(0, Math.min(100, percentage))}%`;
+  document.getElementById("monitor-coverage-label").textContent =
+    `${coverage.available_count || 0}/${coverage.layer_count || 4} 层有遥测 · ${percentage.toFixed(0)}%`;
+
+  document.getElementById("layer-stack").innerHTML = layers.length
+    ? layers.map(layer => {
+        const status = layer.status || "unknown";
+        const metrics = (layer.metrics || []).slice(0, 8).map(metric => `
+          <div class="layer-metric" title="来源：${escapeHtml(metric.source || layer.source || "")}">
+            <div class="layer-metric-label">${escapeHtml(metric.label || metric.key || "指标")}</div>
+            <div class="layer-metric-value">${escapeHtml(monitorMetricValue(metric))}</div>
+          </div>`).join("");
+        const highlights = (layer.highlights || []).map(item => `<div>· ${escapeHtml(item)}</div>`).join("");
+        return `<div class="layer-card ${escapeHtml(status)}" data-layer="${escapeHtml(layer.id || "")}">
+          <div class="layer-title">
+            <span>${escapeHtml(layer.name || layer.id || "监控层")}</span>
+            <span class="layer-status">${escapeHtml(MONITOR_STATUS_LABELS[status] || status)}</span>
+          </div>
+          <div class="layer-source">${escapeHtml(layer.source || "")}</div>
+          <div class="layer-metrics">${metrics}</div>
+          <div class="layer-highlights">${highlights}</div>
+        </div>`;
+      }).join("")
+    : `<div class="empty">暂无监控数据</div>`;
+}
+
+async function loadLiveMonitoring() {
+  const button = document.getElementById("monitor-refresh");
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/monitor/snapshot");
+    const payload = await response.json();
+    if (!response.ok || payload.error) throw new Error(payload.error || `HTTP ${response.status}`);
+    renderMultilayerMonitoring(payload);
+  } catch (error) {
+    document.getElementById("monitor-overall").textContent = "采集失败";
+    document.getElementById("layer-stack").innerHTML =
+      `<div class="empty">本机监控快照采集失败：${escapeHtml(error)}</div>`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function encodePayload(value) {
+  return encodeURIComponent(JSON.stringify(value || {})).replace(/'/g, "%27");
+}
+
+function decodePayload(payload) {
+  try {
+    return JSON.parse(decodeURIComponent(payload || "%7B%7D"));
+  } catch (_) {
+    return {};
+  }
+}
+
+function markdownText(value, fallback = "—") {
+  const text = String(value ?? "").replace(/\r\n?/g, "\n").trim();
+  return text || fallback;
+}
+
+function markdownInline(value, fallback = "—") {
+  return markdownText(value, fallback)
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\n/g, "<br>");
+}
+
+function markdownConfidence(value) {
+  const confidence = Number(value);
+  if (!Number.isFinite(confidence)) return "—";
+  const percentage = confidence <= 1 ? confidence * 100 : confidence;
+  return `${Math.round(percentage)}%`;
+}
+
+function markdownSection(lines, title) {
+  lines.push("", `## ${title}`, "");
+}
+
+function buildDiagnosticMarkdown(data, sourceFileName) {
+  const judge = data && data.judge && typeof data.judge === "object" ? data.judge : {};
+  const report = judge.diagnostic_report && typeof judge.diagnostic_report === "object"
+    ? judge.diagnostic_report : {};
+  const summary = data && data.summary && typeof data.summary === "object" ? data.summary : {};
+  const errors = Array.isArray(judge.errors) ? judge.errors : [];
+  const rawRootCauses = Array.isArray(judge.root_causes) ? judge.root_causes : [];
+  const rootCauseDetails = Array.isArray(report.root_cause_details) ? report.root_cause_details : [];
+  const relationships = Array.isArray(report.relationships) ? report.relationships : [];
+  const failureChain = Array.isArray(report.failure_chain) ? report.failure_chain : [];
+  const priorities = Array.isArray(report.remediation_priorities) ? report.remediation_priorities : [];
+  const taxonomyHits = Array.isArray(judge.taxonomy_hits) ? judge.taxonomy_hits : [];
+  const lines = [
+    "# Agent Tracer 诊断报告",
+    "",
+    `- Trace 文件：${markdownInline(sourceFileName || "trace")}`,
+    `- 导出时间：${markdownInline(new Date().toLocaleString("zh-CN", { hour12: false }))}`,
+    `- 图规模：${markdownInline(summary.node_count, "0")} 个节点，${markdownInline(summary.edge_count, "0")} 条边`,
+  ];
+
+  markdownSection(lines, "诊断概览");
+  lines.push(
+    `- 影响等级：${markdownInline(severityLabel(report.severity))}`,
+    `- 关键失败阶段：${markdownInline(report.failure_stage || "未识别")}`,
+    "",
+    markdownText(report.overall_failure || judge.final_diagnosis || data.judge_error, "未形成整体诊断。"),
+  );
+
+  if (rootCauseDetails.length || rawRootCauses.length) {
+    markdownSection(lines, "根因如何导致失败");
+    const causes = rootCauseDetails.length ? rootCauseDetails : rawRootCauses;
+    causes.forEach((item, position) => {
+      const index = Number(item.root_cause_index || position + 1);
+      lines.push(`### ${index}. ${markdownInline(item.title || item.module || `根因 ${index}`)}`, "");
+      lines.push(
+        `- 角色：${markdownInline(item.role || "相关根因")}`,
+        `- 模块：${markdownInline(item.module || "未识别模块")}`,
+        `- 位置：${markdownInline(item.location || item.causal_origin_location || item.node_location || "unknown")}`,
+        `- 影响：${markdownInline(item.impact || "未说明")}`,
+        `- 置信度：${markdownConfidence(item.confidence)}`,
+      );
+      const mechanism = item.mechanism || item.reason;
+      if (mechanism) lines.push("", "#### 形成机制", "", markdownText(mechanism));
+      if (item.impact && rootCauseDetails.length) {
+        lines.push("", "#### 对失败的影响", "", markdownText(item.impact));
+      }
+      if (item.evidence) lines.push("", "#### 关键证据", "", markdownText(item.evidence));
+      lines.push("");
+    });
+  }
+
+  if (report.relationship_summary || relationships.length) {
+    markdownSection(lines, "根因之间的联系");
+    lines.push(markdownText(report.relationship_summary, "当前证据不足以确认根因之间的直接关系。"), "");
+    if (relationships.length) {
+      lines.push("| 起点 | 终点 | 关系 | 说明 |", "| --- | --- | --- | --- |");
+      relationships.forEach(item => lines.push(
+        `| 根因 ${markdownInline(item.from_root_cause_index)} | 根因 ${markdownInline(item.to_root_cause_index)} | ${markdownInline(relationshipLabel(item.relation_type))} | ${markdownInline(item.explanation)} |`,
+      ));
+    }
+  }
+
+  if (failureChain.length) {
+    markdownSection(lines, "完整失败链");
+    failureChain.forEach((item, position) => {
+      lines.push(
+        `${position + 1}. **${markdownInline(item.stage || `阶段 ${position + 1}`)}**（${markdownInline(item.location || "unknown")}）`,
+        `   - 事件：${markdownInline(item.event)}`,
+        `   - 影响：${markdownInline(item.effect)}`,
+      );
+    });
+  }
+
+  if (errors.length) {
+    markdownSection(lines, "检测到的错误");
+    lines.push("| 类别 | 影响 | 位置 | 描述 | 证据 |", "| --- | --- | --- | --- | --- |");
+    errors.forEach(item => lines.push(
+      `| ${markdownInline(item.category)} | ${markdownInline(item.impact)} | ${markdownInline(item.location || item.node_location || "unknown")} | ${markdownInline(item.description)} | ${markdownInline(item.evidence)} |`,
+    ));
+  }
+
+  if (taxonomyHits.length) {
+    markdownSection(lines, "故障分类（CCG Taxonomy）");
+    lines.push("| 分类 ID | 故障名称 | 是否命中 | 置信度 | 证据 |", "| --- | --- | --- | --- | --- |");
+    taxonomyHits.forEach(item => lines.push(
+      `| ${markdownInline(item.fault_id)} | ${markdownInline(item.fault_name)} | ${item.matched ? "是" : "否"} | ${markdownConfidence(item.confidence)} | ${markdownInline(item.evidence)} |`,
+    ));
+  }
+
+  const edgeTypes = summary.edge_types && typeof summary.edge_types === "object" ? summary.edge_types : {};
+  const semanticEdges = Array.isArray(data && data.edges)
+    ? data.edges.filter(edge => SEMANTIC_EDGE_TYPES.has(edge.label)) : [];
+  if (Object.keys(edgeTypes).length || semanticEdges.length) {
+    markdownSection(lines, "图证据摘要");
+    if (Object.keys(edgeTypes).length) {
+      lines.push("### 边类型统计", "", "| 边类型 | 数量 |", "| --- | ---: |");
+      Object.entries(edgeTypes).sort((a, b) => b[1] - a[1]).forEach(([type, count]) => {
+        lines.push(`| ${markdownInline(type)} | ${markdownInline(count, "0")} |`);
+      });
+    }
+    if (semanticEdges.length) {
+      const nodeLabels = new Map((data.nodes || []).map(node => [node.id, node.label || node.id]));
+      lines.push("", "### 语义传播与校验边", "", "| 类型 | 来源 | 目标 | 状态 | 方法 | 得分 |", "| --- | --- | --- | --- | --- | ---: |");
+      semanticEdges.forEach(edge => lines.push(
+        `| ${markdownInline(edge.label)} | ${markdownInline(nodeLabels.get(edge.from) || edge.from)} | ${markdownInline(nodeLabels.get(edge.to) || edge.to)} | ${markdownInline(edge.propagation_state)} | ${markdownInline(edge.method)} | ${markdownInline(edge.score)} |`,
+      ));
+    }
+  }
+
+  if (priorities.length) {
+    markdownSection(lines, "建议修复顺序");
+    priorities.forEach((item, position) => lines.push(
+      `### ${markdownInline(item.priority || position + 1)}. ${markdownInline(item.target || "相关模块")}`,
+      "",
+      markdownText(item.action, "未提供具体动作。"),
+      "",
+      `预期效果：${markdownText(item.expected_effect, "未说明。")}`,
+      "",
+    ));
+  }
+
+  markdownSection(lines, "结论");
+  lines.push(markdownText(report.conclusion || judge.final_diagnosis || report.overall_failure, "当前证据不足以形成结论。"), "");
+  return lines.join("\n");
+}
+
+function diagnosticMarkdownFileName(sourceFileName) {
+  const stem = String(sourceFileName || "trace")
+    .replace(/(?:\.readable)?\.(?:json|trace)$/i, "")
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+    .trim() || "trace";
+  return `${stem}_diagnostic_report.md`;
+}
+
+function downloadMarkdown(fileName, markdown) {
+  const blob = new Blob(["\uFEFF", markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function renderParsedData(data, sourceName) {
+  latestParseData = null;
+  document.getElementById("export-md-btn").disabled = true;
+  latestParseData = data;
+  document.getElementById("export-md-btn").disabled = !data.judge;
+  spanIndex = data.span_index || {};
+  renderGraph(data);
+  renderMultilayerMonitoring(data.multilayer_monitoring || {});
+  traceAnnotations = buildTraceAnnotations(data.judge);
+  renderTraceTree(data.span_tree || []);
+  renderJudge(data.judge, data.judge_error);
+  if (!data.judge && !data.judge_error) showJudgeHint();
+  setStatus(`${sourceName} — ${data.summary.node_count} 节点, ${data.summary.edge_count} 边`);
+}
+
+async function parseTraceFile(file, runJudge) {
+  if (!file) return;
+  lastTraceName = file.name;
+  document.getElementById("status").textContent = runJudge ? "解析中（含 LLM 诊断，请稍候）..." : "解析中...";
+  document.getElementById("spinner").style.display = "block";
+  document.getElementById("judge-btn").disabled = true;
+  const fd = new FormData();
+  fd.append("file", file);
+  if (runJudge) fd.append("run_judge", "1");
+  try {
+    const res = await fetch("/api/parse", { method: "POST", body: fd });
+    const data = await res.json();
+    if (data.error) { setStatus("错误: " + data.error); return; }
+    renderParsedData(data, file.name);
+  } catch(err) {
+    setStatus("请求失败: " + err);
+  } finally {
+    document.getElementById("spinner").style.display = "none";
+    document.getElementById("judge-btn").disabled = !lastTraceFile;
+  }
+}
+
+function renderBatchResults(payload) {
+  const summary = payload.summary || {};
+  batchResults = payload.results || [];
+  document.getElementById("panel-batch").style.display = "block";
+  document.getElementById("batch-total").textContent = summary.total || 0;
+  document.getElementById("batch-success").textContent = summary.succeeded || 0;
+  document.getElementById("batch-failed").textContent = summary.failed || 0;
+  document.getElementById("batch-diagnosed").textContent = summary.diagnosed || 0;
+  const container = document.getElementById("batch-results");
+  container.innerHTML = "";
+  batchResults.forEach((item, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `batch-result${item.ok ? "" : " failed"}`;
+    const result = item.result || {};
+    const summaryText = item.ok
+      ? `${result.summary?.node_count || 0} 节点 · ${result.summary?.edge_count || 0} 边${result.judge ? " · 已诊断" : ""}`
+      : (item.error || "处理失败");
+    button.innerHTML = `<span class="batch-dot"></span><span><strong>${escapeHtml(item.filename)}</strong><small>${escapeHtml(summaryText)}</small></span><span class="batch-state">${item.ok ? "查看" : "失败"}</span>`;
+    if (item.ok) button.addEventListener("click", () => {
+      lastTraceFile = null;
+      lastTraceName = item.filename;
+      renderParsedData(item.result, item.filename);
+      document.getElementById("judge-btn").disabled = true;
+    });
+    container.appendChild(button);
+  });
+}
+
+async function parseBatchFiles(files, runJudge) {
+  if (!files || !files.length) return;
+  if (files.length > 50) { setStatus("一次最多选择 50 个 trace 文件"); return; }
+  lastTraceFile = null;
+  lastTraceName = "";
+  document.getElementById("status").textContent = runJudge ? `批量诊断 ${files.length} 个文件中（含 LLM，请稍候）...` : `批量解析 ${files.length} 个文件中...`;
+  document.getElementById("spinner").style.display = "block";
+  const fd = new FormData();
+  Array.from(files).forEach(file => fd.append("files", file));
+  if (runJudge) fd.append("run_judge", "1");
+  try {
+    const res = await fetch("/api/parse-batch", { method: "POST", body: fd });
+    const payload = await res.json();
+    if (!res.ok || payload.error) { setStatus("错误: " + (payload.error || `HTTP ${res.status}`)); return; }
+    renderBatchResults(payload);
+    const first = batchResults.find(item => item.ok);
+    if (first) {
+      lastTraceName = first.filename;
+      renderParsedData(first.result, first.filename);
+      document.getElementById("judge-btn").disabled = true;
+    }
+    setStatus(`批量诊断完成：${payload.summary.succeeded}/${payload.summary.total} 成功`);
+  } catch(err) {
+    setStatus("批量请求失败: " + err);
+  } finally {
+    document.getElementById("spinner").style.display = "none";
+  }
+}
+
+document.getElementById("file-input").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  lastTraceFile = file;
+  await parseTraceFile(file, document.getElementById("run-judge").checked);
+  e.target.value = "";
+});
+
+document.getElementById("batch-upload-btn").addEventListener("click", () => {
+  document.getElementById("batch-file-input").click();
+});
+
+document.getElementById("batch-file-input").addEventListener("change", async (e) => {
+  const files = e.target.files;
+  if (!files || !files.length) return;
+  await parseBatchFiles(files, document.getElementById("run-judge").checked);
+  e.target.value = "";
+});
+
+document.getElementById("judge-btn").addEventListener("click", async () => {
+  if (!lastTraceFile) {
+    setStatus("请先上传 trace 文件");
+    return;
+  }
+  await parseTraceFile(lastTraceFile, true);
+});
+
+document.getElementById("export-md-btn").addEventListener("click", () => {
+  if (!latestParseData || !latestParseData.judge) {
+    setStatus("请先运行根因分析，再导出诊断结果");
+    return;
+  }
+  const fileName = diagnosticMarkdownFileName(lastTraceName || (lastTraceFile && lastTraceFile.name));
+  const markdown = buildDiagnosticMarkdown(latestParseData, lastTraceName || (lastTraceFile && lastTraceFile.name));
+  downloadMarkdown(fileName, markdown);
+  setStatus(`已导出诊断报告：${fileName}`);
+});
+
+function setStatus(msg) { document.getElementById("status").textContent = msg; }
+
+let networkDS = null;
+
+function getEdgeStyle(edgeType) {
+  return EDGE_STYLES[edgeType] || { color: "#aaaaaa", dashes: false, group: "其他", defaultVisible: true };
+}
+
+function edgeLineBackground(style) {
+  if (!style.dashes) return `linear-gradient(${style.color},${style.color})`;
+  return `repeating-linear-gradient(90deg,${style.color} 0,${style.color} ${style.dashes[0]}px,transparent ${style.dashes[0]}px,transparent ${style.dashes[0] + style.dashes[1]}px)`;
+}
+
+function buildParallelEdgeSmooth(edges) {
+  const groups = new Map();
+  edges.forEach((edge, index) => {
+    const key = `${edge.from}::${edge.to}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(index);
+  });
+  const result = new Array(edges.length);
+  groups.forEach(indices => {
+    indices.forEach((edgeIndex, position) => {
+      if (indices.length === 1) {
+        result[edgeIndex] = { type: "curvedCW", roundness: 0.08 };
+        return;
+      }
+      const centered = position - (indices.length - 1) / 2;
+      result[edgeIndex] = {
+        type: centered < 0 ? "curvedCCW" : "curvedCW",
+        roundness: 0.08 + Math.abs(centered) * 0.12,
+      };
+    });
+  });
+  return result;
+}
+
+function renderEdgeFilters() {
+  const list = document.getElementById("edge-filter-list");
+  if (!list) return;
+  const edgeTypes = [...new Set([...Object.keys(EDGE_STYLES), ...Object.keys(edgeTypeCounts)])];
+  list.innerHTML = "";
+  edgeTypes.forEach(edgeType => {
+    const style = getEdgeStyle(edgeType);
+    const count = edgeTypeCounts[edgeType] || 0;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `edge-filter-btn${visibleEdgeTypes.has(edgeType) ? " active" : ""}`;
+    button.dataset.edgeType = edgeType;
+    button.disabled = count === 0;
+    button.setAttribute("aria-pressed", visibleEdgeTypes.has(edgeType) ? "true" : "false");
+    button.title = `${style.group}边 · ${edgeType}`;
+    button.innerHTML = `<span class="edge-swatch"></span><span>${edgeType} (${count})</span>`;
+    button.querySelector(".edge-swatch").style.background = edgeLineBackground(style);
+    button.addEventListener("click", () => {
+      if (visibleEdgeTypes.has(edgeType)) visibleEdgeTypes.delete(edgeType);
+      else visibleEdgeTypes.add(edgeType);
+      applyEdgeFilters();
+    });
+    list.appendChild(button);
+  });
+  refreshEdgeFilterControls();
+}
+
+function refreshEdgeFilterControls() {
+  document.querySelectorAll(".edge-filter-btn").forEach(button => {
+    const active = visibleEdgeTypes.has(button.dataset.edgeType);
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  const total = Object.values(edgeTypeCounts).reduce((sum, count) => sum + count, 0);
+  const visible = Object.entries(edgeTypeCounts)
+    .filter(([edgeType]) => visibleEdgeTypes.has(edgeType))
+    .reduce((sum, [, count]) => sum + count, 0);
+  const summary = document.getElementById("edge-filter-summary");
+  if (summary) summary.textContent = total ? `已显示 ${visible} / ${total} 条边` : "尚未加载图";
+  const stat = document.getElementById("s-edges");
+  if (stat) stat.textContent = total ? `${visible}/${total}` : "-";
+}
+
+function applyEdgeFilters(stabilize = true) {
+  if (!networkDS) {
+    refreshEdgeFilterControls();
+    return;
+  }
+  const updates = networkDS.edges.get().map(edge => {
+    const visible = visibleEdgeTypes.has(edge.edgeType);
+    return {
+      id: edge.id,
+      hidden: !visible,
+      label: visible && edgeLabelsVisible ? edge.edgeType : "",
+    };
+  });
+  networkDS.edges.update(updates);
+  refreshEdgeFilterControls();
+  clearHighlight();
+  if (network && stabilize) network.stabilize(80);
+}
+
+function setEdgePreset(preset) {
+  const available = Object.keys(edgeTypeCounts).filter(edgeType => edgeTypeCounts[edgeType] > 0);
+  if (preset === "all") visibleEdgeTypes = new Set(available);
+  else if (preset === "none") visibleEdgeTypes = new Set();
+  else if (preset === "semantic") visibleEdgeTypes = new Set(available.filter(edgeType => SEMANTIC_EDGE_TYPES.has(edgeType)));
+  else visibleEdgeTypes = new Set(available.filter(edgeType => CORE_EDGE_TYPES.has(edgeType)));
+  applyEdgeFilters();
+}
+
+document.querySelectorAll("[data-edge-preset]").forEach(button => {
+  button.addEventListener("click", () => setEdgePreset(button.dataset.edgePreset));
+});
+document.getElementById("edge-label-toggle").addEventListener("change", event => {
+  edgeLabelsVisible = event.target.checked;
+  applyEdgeFilters(false);
+});
+renderEdgeFilters();
+
+function agentColor(agentId) {
+  const agent = agentsData.find(item => item.agent_id === agentId);
+  if (!agent || agent.agent_role === "main") return "#7b8790";
+  const subagents = agentsData.filter(item => item.agent_role === "subagent");
+  const index = Math.max(0, subagents.findIndex(item => item.agent_id === agentId));
+  return AGENT_COLORS[index % AGENT_COLORS.length];
+}
+
+function nodeVisualStyle(node) {
+  const style = NODE_STYLES[node.group] || { color: "#cccccc", borderColor: "#999999" };
+  const endpoint = node.group === "Intent" || node.group === "Conclusion";
+  const subagent = node.agent_role === "subagent";
+  return {
+    fill: style.color,
+    border: subagent ? agentColor(node.agent_id) : style.borderColor,
+    borderWidth: subagent ? 4 : (endpoint ? 4 : (node.group === "Error" ? 3 : 2)),
+    shadow: endpoint ? { enabled: true, color: style.color, size: 12, x: 0, y: 0 } : false,
+    font: {
+      color: "#000000",
+      size: endpoint ? 14 : 12,
+      face: "Microsoft YaHei, SimHei, sans-serif",
+      bold: endpoint,
+    },
+  };
+}
+
+function agentClusterId(agentId) {
+  return `agent-cluster:${agentId}`;
+}
+
+function renderAgentControls() {
+  const list = document.getElementById("agent-list");
+  const summary = document.getElementById("agent-summary");
+  if (!list || !summary) return;
+  list.innerHTML = "";
+  agentsData.forEach(agent => {
+    const isMain = agent.agent_role === "main";
+    const collapsed = collapsedAgentIds.has(agent.agent_id);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `agent-item${isMain ? " main" : ""}`;
+    button.disabled = isMain;
+    button.title = isMain ? "主代理始终展开" : `${collapsed ? "展开" : "折叠"} ${agent.agent_label}`;
+    button.innerHTML = `
+      <span class="agent-color"></span>
+      <span class="agent-copy">
+        <span class="agent-name">${escapeHtml(agent.agent_label || agent.agent_id)}</span>
+        <span class="agent-task">${escapeHtml(agent.agent_task || "")}</span>
+      </span>
+      <span class="agent-count">${isMain ? "主代理" : (collapsed ? "▶" : "▼")} · ${agent.node_count || 0} 节点${agent.error_count ? ` · ${agent.error_count} 错误` : ""}</span>`;
+    button.querySelector(".agent-color").style.background = agentColor(agent.agent_id);
+    if (!isMain) button.addEventListener("click", () => toggleAgentCluster(agent.agent_id));
+    list.appendChild(button);
+  });
+  const subagentCount = agentsData.filter(item => item.agent_role === "subagent").length;
+  summary.textContent = agentsData.length
+    ? `${agentsData.length} 个 Agent · ${subagentCount} 个 Subagent · 双击集群也可展开`
+    : "当前 trace 未识别到 Agent";
+}
+
+function clusterSubagent(agentId, refresh = true) {
+  if (!network) return;
+  const meta = agentsData.find(item => item.agent_id === agentId && item.agent_role === "subagent");
+  const clusterId = agentClusterId(agentId);
+  if (!meta || network.isCluster(clusterId)) return;
+  const color = agentColor(agentId);
+  network.cluster({
+    joinCondition: node => node.agent_id === agentId,
+    clusterNodeProperties: {
+      id: clusterId,
+      label: `${meta.agent_label}\n${meta.node_count || 0} 节点 · ${meta.error_count || 0} 错误`,
+      title: `${meta.agent_label}\n${meta.agent_task || ""}\n双击展开`,
+      shape: "box",
+      color: { background: "#252a2f", border: color, highlight: { background: "#30363c", border: "#fff" } },
+      borderWidth: 4,
+      font: { color: "#f2f3f4", size: 12, face: "Microsoft YaHei, SimHei, sans-serif", bold: true },
+      margin: 12,
+      shadow: { enabled: true, color, size: 10, x: 0, y: 0 },
+      agent_id: meta.parent_agent_id,
+      represented_agent_id: agentId,
+      agent_role: "cluster",
+    },
+  });
+  collapsedAgentIds.add(agentId);
+  if (refresh) renderAgentControls();
+}
+
+function expandSubagent(agentId, refresh = true) {
+  if (!network) return;
+  const clusterId = agentClusterId(agentId);
+  if (network.isCluster(clusterId)) network.openCluster(clusterId);
+  collapsedAgentIds.delete(agentId);
+  if (refresh) renderAgentControls();
+}
+
+function toggleAgentCluster(agentId) {
+  if (collapsedAgentIds.has(agentId)) expandSubagent(agentId);
+  else clusterSubagent(agentId);
+  if (network) network.stabilize(80);
+}
+
+function collapseAllSubagents() {
+  agentsData
+    .filter(item => item.agent_role === "subagent")
+    .sort((a, b) => (b.agent_depth || 0) - (a.agent_depth || 0))
+    .forEach(item => clusterSubagent(item.agent_id, false));
+  renderAgentControls();
+  if (network) network.stabilize(100);
+}
+
+function expandAllSubagents() {
+  agentsData
+    .filter(item => item.agent_role === "subagent")
+    .sort((a, b) => (a.agent_depth || 0) - (b.agent_depth || 0))
+    .forEach(item => expandSubagent(item.agent_id, false));
+  renderAgentControls();
+  if (network) network.stabilize(100);
+}
+
+document.getElementById("collapse-agents").addEventListener("click", collapseAllSubagents);
+document.getElementById("expand-agents").addEventListener("click", expandAllSubagents);
+renderAgentControls();
+
+function renderGraph(data) {
+  nodesData = data.nodes;
+  agentsData = data.agents || [];
+  collapsedAgentIds = new Set();
+  edgeTypeCounts = data.summary.edge_types || data.edges.reduce((counts, edge) => {
+    counts[edge.label] = (counts[edge.label] || 0) + 1;
+    return counts;
+  }, {});
+  visibleEdgeTypes = new Set(
+    Object.keys(edgeTypeCounts).filter(edgeType => getEdgeStyle(edgeType).defaultVisible !== false)
+  );
+  const isEndpoint = g => g === "Intent" || g === "Conclusion";
+  const visNodes = nodesData.map(n => {
+    const ep = isEndpoint(n.group);
+    const base = nodeVisualStyle(n);
+    const agentTitle = n.agent_label
+      ? `${n.agent_label}${n.agent_task ? ` · ${n.agent_task}` : ""}\n`
+      : "";
+    return {
+      id: n.id, label: n.id, title: `${agentTitle}${n.title || ""}`, group: n.group,
+      saliency: n.saliency, span_id: n.span_id, parent_span_id: n.parent_span_id,
+      agent_id: n.agent_id, agent_label: n.agent_label, agent_role: n.agent_role,
+      agent_depth: n.agent_depth, parent_agent_id: n.parent_agent_id,
+      shape: "box",
+      color: { background: base.fill, border: base.border, highlight: { background: base.fill, border: "#fff" } },
+      font: base.font,
+      borderWidth: base.borderWidth,
+      shadow: base.shadow,
+      labelHighlightBold: false,
+      widthConstraint: { minimum: ep ? 80 : 60, maximum: ep ? 140 : 120 },
+      heightConstraint: { minimum: ep ? 38 : 30 },
+    };
+  });
+  const parallelSmooth = buildParallelEdgeSmooth(data.edges);
+  const visEdges = data.edges.map((e, i) => {
+    const s = getEdgeStyle(e.label);
+    const detail = [e.label, e.method ? `method: ${e.method}` : "", e.score != null ? `score: ${e.score}` : ""]
+      .filter(Boolean)
+      .join("\n");
+    return {
+      id: i, from: e.from, to: e.to, edgeType: e.label,
+      label: edgeLabelsVisible && visibleEdgeTypes.has(e.label) ? e.label : "",
+      title: detail,
+      hidden: !visibleEdgeTypes.has(e.label),
+      arrows: "to", width: 1.5,
+      color: { color: s.color, highlight: "#fff" },
+      dashes: s.dashes,
+      smooth: parallelSmooth[i],
+      font: { color: s.color, size: 10, strokeWidth: 3, strokeColor: "#111315", align: "middle" },
+    };
+  });
+
+  const container = document.getElementById("network");
+  networkDS = { nodes: new vis.DataSet(visNodes), edges: new vis.DataSet(visEdges) };
+  if (network) network.destroy();
+  network = new vis.Network(container, networkDS, {
+    physics: {
+      solver: "forceAtlas2Based",
+      forceAtlas2Based: { avoidOverlap: 1, springLength: 120, gravitationalConstant: -80 },
+      stabilization: { iterations: 300 },
+    },
+    interaction: { hover: true, tooltipDelay: 100 },
+  });
+  renderEdgeFilters();
+  renderAgentControls();
+  collapseAllSubagents();
+  network.on("doubleClick", params => {
+    if (!params.nodes.length) return;
+    const clusterId = String(params.nodes[0]);
+    if (!clusterId.startsWith("agent-cluster:")) return;
+    expandSubagent(clusterId.slice("agent-cluster:".length));
+    network.stabilize(80);
+  });
+  network.on("click", (params) => {
+    if (!params.nodes.length) { document.getElementById("node-detail").style.display = "none"; clearHighlight(); return; }
+    const clusterId = String(params.nodes[0]);
+    if (clusterId.startsWith("agent-cluster:")) {
+      const agentId = clusterId.slice("agent-cluster:".length);
+      const agent = agentsData.find(item => item.agent_id === agentId);
+      if (agent) {
+        document.getElementById("node-detail").style.display = "block";
+        const ndType = document.getElementById("nd-type");
+        ndType.textContent = `[Subagent] ${agent.agent_label}`;
+        ndType.style.color = agentColor(agentId);
+        document.getElementById("nd-content").innerHTML =
+          `<div style="font-size:10px;color:#888;margin-bottom:4px">agent_id: <span style="color:#76b7b2;user-select:all">${escapeHtml(agentId)}</span></div>` +
+          `<div>${escapeHtml(agent.agent_task || "")}</div>` +
+          `<div style="font-size:10px;color:#888;margin-top:6px">${agent.node_count || 0} 节点 · ${agent.error_count || 0} 错误 · 双击展开</div>`;
+      }
+      return;
+    }
+    const node = nodesData.find(n => n.id === params.nodes[0]);
+    if (!node) return;
+    document.getElementById("node-detail").style.display = "block";
+    const ndType = document.getElementById("nd-type");
+    ndType.textContent = `[${node.group}] ${node.id}`;
+    ndType.style.color = (NODE_STYLES[node.group] || {}).color || "#ccc";
+    document.getElementById("nd-content").innerHTML =
+      `<div style="font-size:10px;color:#888;margin-bottom:4px">span_id: <span style="color:#76b7b2;user-select:all">${node.span_id || '—'}</span>　saliency: ${(node.saliency||0).toFixed(3)}${node.agent_label ? `　Agent: ${escapeHtml(node.agent_label)}` : ""}</div>` +
+      `<div style="white-space:pre-wrap">${node.title || ""}</div>`;
+    showPropagationPath([node.id]);
+    showSpanDrawer(node.span_id);
+  });
+
+  document.getElementById("s-nodes").textContent = data.summary.node_count;
+  refreshEdgeFilterControls();
+  document.getElementById("type-stats").innerHTML = Object.entries(data.summary.node_types).map(([t, c]) => {
+    const s = NODE_STYLES[t] || { color: "#ccc", sym: "●" };
+    return `<div class="legend-item"><div class="dot" style="background:${s.color};border-radius:3px;border:2px solid ${s.borderColor||s.color}"></div>${t}: <b>${c}</b></div>`;
+  }).join("");
+}
+
+// Build adjacency for path tracing (upstream + downstream)
+function buildAdj() {
+  const upstream = {}, downstream = {};
+  networkDS.edges.get().forEach(e => {
+    if (e.hidden || !PROPAGATION_PATH_EDGE_TYPES.has(e.edgeType)) return;
+    if (!downstream[e.from]) downstream[e.from] = [];
+    downstream[e.from].push({ node: e.to, edgeId: e.id });
+    if (!upstream[e.to]) upstream[e.to] = [];
+    upstream[e.to].push({ node: e.from, edgeId: e.id });
+  });
+  return { upstream, downstream };
+}
+
+// BFS from seeds, returns { nodeIds, edgeIds }
+function bfs(seeds, adj) {
+  const visited = new Set(seeds);
+  const edges = new Set();
+  const queue = [...seeds];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const { node, edgeId } of (adj[cur] || [])) {
+      edges.add(edgeId);
+      if (!visited.has(node)) { visited.add(node); queue.push(node); }
+    }
+  }
+  return { nodeIds: visited, edgeIds: edges };
+}
+
+function showPropagationPath(seedIds) {
+  if (!networkDS) return;
+  const { upstream, downstream } = buildAdj();
+  const up = bfs(seedIds, upstream);
+  const dn = bfs(seedIds, downstream);
+  const pathNodes = new Set([...up.nodeIds, ...dn.nodeIds]);
+  const pathEdges = new Set([...up.edgeIds, ...dn.edgeIds]);
+
+  // Preserve type fill colors. Path state is encoded only by border, shadow, and opacity.
+  networkDS.nodes.get().forEach(n => {
+    const inPath = pathNodes.has(n.id);
+    const isSeed = seedIds.includes(n.id);
+    const base = nodeVisualStyle(n);
+    networkDS.nodes.update({
+      id: n.id,
+      color: {
+        background: base.fill,
+        border: isSeed ? "#ffffff" : (inPath ? "#f59e0b" : base.border),
+        highlight: { background: base.fill, border: "#ffffff" },
+      },
+      borderWidth: isSeed ? 6 : (inPath ? Math.max(4, base.borderWidth) : base.borderWidth),
+      shadow: inPath
+        ? { enabled: true, color: isSeed ? "#ffffff" : "#f59e0b", size: isSeed ? 16 : 10, x: 0, y: 0 }
+        : false,
+      font: { ...base.font, color: inPath ? "#000000" : "#555b60" },
+      opacity: inPath ? 1 : 0.22,
+    });
+  });
+  networkDS.edges.get().forEach(e => {
+    networkDS.edges.update({
+      id: e.id,
+      color: pathEdges.has(e.id) ? { color: "#f28e2b", highlight: "#fff" } : { color: "#2a2a3e" },
+      width: pathEdges.has(e.id) ? 3 : 1,
+    });
+  });
+}
+
+function clearHighlight() {
+  if (!networkDS) return;
+  networkDS.nodes.get().forEach(n => {
+    const base = nodeVisualStyle(n);
+    networkDS.nodes.update({
+      id: n.id,
+      color: { background: base.fill, border: base.border, highlight: { background: base.fill, border: "#fff" } },
+      borderWidth: base.borderWidth,
+      shadow: base.shadow,
+      font: base.font,
+      opacity: 1,
+    });
+  });
+  networkDS.edges.get().forEach(e => {
+    const s = getEdgeStyle(e.edgeType);
+    networkDS.edges.update({
+      id: e.id,
+      color: { color: s.color, highlight: "#fff" },
+      width: 1.5,
+      label: !e.hidden && edgeLabelsVisible ? e.edgeType : "",
+    });
+  });
+}
+
+function scoreClass(v) { return v >= 4 ? "high" : v >= 3 ? "mid" : "low"; }
+
+function severityClass(value) {
+  const normalized = String(value || "unknown").toLowerCase();
+  return ["high", "medium", "low"].includes(normalized) ? normalized : "unknown";
+}
+
+function severityLabel(value) {
+  return ({ HIGH: "高影响", MEDIUM: "中影响", LOW: "低影响" })[String(value || "").toUpperCase()] || "影响待确认";
+}
+
+function relationshipLabel(value) {
+  return ({
+    triggers: "触发",
+    amplifies: "放大",
+    blocks_recovery: "阻断恢复",
+    parallel: "并行作用",
+  })[value] || value || "关联";
+}
+
+function reportLocationAction(location, ctxKey, innerHtml, className) {
+  const nodeId = findNodeBySpanOrId(location) || "";
+  const payload = encodePayload({ nodeId, loc: location || "", ctxKey });
+  const actionable = Boolean(location && location !== "unknown");
+  return `<div class="${className}" ${actionable ? `onclick="handleJudgeLocationPayload('${payload}', 'graph')"` : ""}>${innerHtml}</div>`;
+}
+
+function renderDiagnosticReport(report, judge) {
+  if (!report || typeof report !== "object") return false;
+  const details = Array.isArray(report.root_cause_details) ? report.root_cause_details : [];
+  const relationships = Array.isArray(report.relationships) ? report.relationships : [];
+  const chain = Array.isArray(report.failure_chain) ? report.failure_chain : [];
+  const priorities = Array.isArray(report.remediation_priorities) ? report.remediation_priorities : [];
+  const severity = String(report.severity || "UNKNOWN").toUpperCase();
+
+  const rootCauseHtml = details.map((item, position) => {
+    const index = Number(item.root_cause_index || position + 1);
+    const ctxKey = `report_rc_${index}`;
+    judgeCtxMap[ctxKey] = {
+      root_cause: item.mechanism || item.impact || "",
+      fault_types: (judge.taxonomy_hits || []).filter(hit => hit.matched).map(hit => hit.fault_name),
+    };
+    const confidence = Number(item.confidence);
+    const confidenceText = Number.isFinite(confidence) ? ` · 置信度 ${Math.round(confidence * 100)}%` : "";
+    const content = `<div class="report-rc-head">
+        <div class="report-rc-title">${index}. ${escapeHtml(item.title || `根因 ${index}`)}</div>
+        <div class="report-meta">${escapeHtml(item.role || "相关根因")}${confidenceText}</div>
+      </div>
+      <div class="report-meta">${escapeHtml(item.module || "未识别模块")} · ${escapeHtml(item.location || "unknown")}</div>
+      <div class="report-label">形成机制</div>
+      <div class="report-text">${escapeHtml(item.mechanism || "未提供")}</div>
+      <div class="report-label">对失败的影响</div>
+      <div class="report-text report-impact">${escapeHtml(item.impact || "未提供")}</div>
+      ${item.evidence ? `<div class="report-label">关键证据</div><div class="report-text">${escapeHtml(item.evidence)}</div>` : ""}`;
+    return reportLocationAction(item.location, ctxKey, content, "report-rc");
+  }).join("");
+
+  const relationshipHtml = relationships.length
+    ? relationships.map(item => `<div class="relation-item">
+        <span class="relation-tag">根因 ${escapeHtml(item.from_root_cause_index)} → ${escapeHtml(item.to_root_cause_index)} · ${escapeHtml(relationshipLabel(item.relation_type))}</span>
+        <div class="relation-copy">${escapeHtml(item.explanation || "")}</div>
+      </div>`).join("")
+    : "";
+
+  const chainHtml = chain.map((item, position) => {
+    const location = item.location || "";
+    const content = `<div><span class="chain-stage">${escapeHtml(item.stage || `阶段 ${position + 1}`)}</span>${location ? `<span class="chain-location">${escapeHtml(location)}</span>` : ""}</div>
+      <div class="chain-event">${escapeHtml(item.event || "")}${item.effect ? ` → ${escapeHtml(item.effect)}` : ""}</div>`;
+    return reportLocationAction(location, "", content, "chain-step");
+  }).join("");
+
+  const priorityHtml = priorities.map((item, position) => `<div class="priority-item">
+      <div class="priority-num">${escapeHtml(item.priority || position + 1)}</div>
+      <div><div class="priority-target">${escapeHtml(item.target || "相关模块")}</div>
+      <div class="priority-copy">${escapeHtml(item.action || "")}${item.expected_effect ? `<br>预期：${escapeHtml(item.expected_effect)}` : ""}</div></div>
+    </div>`).join("");
+
+  document.getElementById("report-content").innerHTML = `
+    <div class="report-hero">
+      <div class="report-kicker"><span class="severity-badge ${severityClass(severity)}">${severityLabel(severity)}</span><span>关键失败阶段：${escapeHtml(report.failure_stage || "未识别")}</span></div>
+      <div class="report-overall">${escapeHtml(report.overall_failure || judge.final_diagnosis || "未形成整体诊断")}</div>
+    </div>
+    ${rootCauseHtml ? `<div class="report-section"><div class="report-section-title">根因如何导致失败</div>${rootCauseHtml}</div>` : ""}
+    <div class="report-section"><div class="report-section-title">根因之间的联系</div><div class="relation-copy" style="margin-bottom:${relationshipHtml ? "7px" : "0"}">${escapeHtml(report.relationship_summary || "当前证据不足以确认根因之间的直接关系。")}</div>${relationshipHtml}</div>
+    ${chainHtml ? `<div class="report-section"><div class="report-section-title">完整失败链</div><div class="chain-list">${chainHtml}</div></div>` : ""}
+    ${priorityHtml ? `<div class="report-section"><div class="report-section-title">建议修复顺序</div>${priorityHtml}</div>` : ""}
+    ${report.conclusion ? `<div class="report-section"><div class="report-section-title">结论</div><div class="report-conclusion">${escapeHtml(report.conclusion)}</div></div>` : ""}`;
+  document.getElementById("panel-report").style.display = "block";
+  return true;
+}
+
+function renderJudge(judge, judgeError) {
+  ["panel-report", "panel-diagnosis", "panel-errors", "panel-rc", "panel-tax"].forEach(id => {
+    document.getElementById(id).style.display = "none";
+  });
+  judgeCtxMap = {};
+  if (!judge && !judgeError) return;
+
+  if (judgeError) {
+    document.getElementById("diagnosis-content").innerHTML =
+      `<div class="diagnosis">${escapeHtml(judgeError)}</div>`;
+    document.getElementById("panel-diagnosis").style.display = "block";
+  }
+
+  const hasReport = judge ? renderDiagnosticReport(judge.diagnostic_report, judge) : false;
+  if (judge && judge.final_diagnosis && !hasReport) {
+    document.getElementById("diagnosis-content").innerHTML =
+      `<div class="diagnosis">${escapeHtml(judge.final_diagnosis)}</div>`;
+    document.getElementById("panel-diagnosis").style.display = "block";
+  }
+
+  // errors
+  const errors = (judge || {}).errors || [];
+  if (errors.length) {
+    document.getElementById("errors-content").innerHTML = errors.map((err, i) => {
+      const locNode = findNodeBySpanOrId(err.location);
+      const faultTypes = (judge.taxonomy_hits || []).filter(h => h.matched).map(h => h.fault_name);
+      const ctx = { root_cause: err.description || "", fault_types: faultTypes };
+      judgeCtxMap[`err_${i}`] = ctx;
+      const payload = encodePayload({ nodeId: locNode || "", loc: err.location || err.node_location || "", ctxKey: `err_${i}` });
+      const clickable = `onclick="handleJudgeLocationPayload('${payload}', 'graph')" style="cursor:pointer"`;
+      const graphLoc = err.node_location ? ` · 图节点: ${escapeHtml(err.node_location)}` : "";
+      const locHint = err.location ? `<div class="ei-ev">原始span: ${escapeHtml(err.location)}${graphLoc}${locNode ? '' : ' (未匹配到节点)'}</div>` : "";
+      const actions = `<div class="loc-actions">
+        <button class="loc-btn primary" onclick="event.stopPropagation();handleJudgeLocationPayload('${payload}', 'graph')">图定位</button>
+        <button class="loc-btn" onclick="event.stopPropagation();handleJudgeLocationPayload('${payload}', 'trace')">Trace定位</button>
+      </div>`;
+      return `<div class="err-item" ${clickable}>
+        <span class="ei-cat">${escapeHtml(err.category || "")}</span>
+        <span class="ei-impact">${escapeHtml(err.impact || "")}</span>
+        <div class="ei-desc">${escapeHtml(err.description || "")}</div>
+        ${err.evidence ? `<div class="ei-ev">${escapeHtml(err.evidence.slice(0,150))}</div>` : ""}
+        ${locHint}
+        ${actions}
+      </div>`;
+    }).join("");
+    document.getElementById("panel-errors").style.display = "block";
+  }
+
+  // root causes
+  const rcs = (judge || {}).root_causes || [];
+  if (rcs.length) {
+    document.getElementById("rc-content").innerHTML = rcs.map((rc, i) => {
+      const matchedErr = errors.find(e => (e.module || "").toLowerCase() === (rc.module || "").toLowerCase());
+      const locNode = findNodeBySpanOrId(rc.location)
+                   || findNodeBySpanOrId(rc.causal_origin_location)
+                   || (matchedErr && findNodeBySpanOrId(matchedErr.location))
+                   || findNodeByModule(rc.module);
+      const rcSpanId = rc.location || rc.causal_origin_location || (matchedErr && matchedErr.location) || '';
+      const faultTypes = (judge.taxonomy_hits || []).filter(h => h.matched).map(h => h.fault_name);
+      const ctx = { root_cause: rc.reason || "", fault_types: faultTypes };
+      judgeCtxMap[`rc_${i}`] = ctx;
+      const payload = encodePayload({ nodeId: locNode || "", loc: rcSpanId, ctxKey: `rc_${i}` });
+      const clickable = `onclick="handleJudgeLocationPayload('${payload}', 'graph')" style="cursor:pointer"`;
+      const spanLabel = rc.location || rc.causal_origin_location || '—';
+      const graphLoc = rc.node_location || rc.causal_origin_node || locNode || "";
+      const locHint = `<div class="ei-ev">原始span: ${escapeHtml(spanLabel)}${graphLoc ? ` · 图节点: ${escapeHtml(graphLoc)}` : ''}${locNode ? '' : ' (未匹配)'}</div>`;
+      const actions = `<div class="loc-actions">
+        <button class="loc-btn primary" onclick="event.stopPropagation();handleJudgeLocationPayload('${payload}', 'graph')">图定位</button>
+        <button class="loc-btn" onclick="event.stopPropagation();handleJudgeLocationPayload('${payload}', 'trace')">Trace定位</button>
+      </div>`;
+      return `<div class="rc-item" ${clickable}>
+        <span class="rc-mod">${escapeHtml(rc.module || "")}</span>
+        <span class="rc-conf">置信度 ${rc.confidence != null ? rc.confidence.toFixed(2) : "?"} · ${escapeHtml(rc.impact || "")}</span>
+        <div class="rc-reason">${escapeHtml(rc.reason || "")}</div>
+        ${locHint}
+        ${actions}
+      </div>`;
+    }).join("");
+    document.getElementById("panel-rc").style.display = "block";
+  }
+
+  // taxonomy
+  const hits = (judge || {}).taxonomy_hits || [];
+  if (hits.length) {
+    document.getElementById("tax-content").innerHTML = hits.map(h => `
+      <div class="tax-item">
+        <span class="tax-badge ${h.matched ? 'matched' : 'unmatched'}">${escapeHtml(h.fault_id)}</span>
+        <div>
+          <div class="tax-name">${escapeHtml(h.fault_name || "")} <span class="tax-conf">(${h.confidence != null ? h.confidence.toFixed(2) : "?"})</span></div>
+          ${h.matched && h.evidence ? `<div class="tax-conf" style="margin-top:2px">${escapeHtml(h.evidence.slice(0,120))}</div>` : ""}
+        </div>
+      </div>`).join("");
+    document.getElementById("panel-tax").style.display = "block";
+  }
+}
+
+function showJudgeHint() {
+  document.getElementById("diagnosis-content").innerHTML =
+    `<div class="diagnosis">已完成图和原始 trace 可视化。根因分析尚未运行：点击顶部“运行根因分析”，或上传前勾选“LLM诊断”。</div>`;
+  document.getElementById("panel-diagnosis").style.display = "block";
+}
+
+function addTraceAnnotation(out, spanId, kind, text) {
+  if (!spanId) return;
+  if (!out[spanId]) out[spanId] = { root_causes: [], errors: [] };
+  const item = { kind, text: text || "" };
+  if (kind === "root_cause") out[spanId].root_causes.push(item);
+  else out[spanId].errors.push(item);
+}
+
+function resolveLocationToSpan(loc) {
+  if (!loc) return "";
+  const parts = String(loc).split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
+  for (const part of parts) {
+    if (spanIndex[part]) return part;
+    const node = nodesData.find(n => n.id === part || n.span_id === part);
+    if (node && node.span_id) return node.span_id;
+  }
+  return "";
+}
+
+function buildTraceAnnotations(judge) {
+  const out = {};
+  if (!judge) return out;
+  (judge.errors || []).forEach(err => {
+    const spanId = resolveLocationToSpan(err.location || err.node_location);
+    addTraceAnnotation(out, spanId, "error", err.description || err.evidence || "");
+  });
+  (judge.root_causes || []).forEach(rc => {
+    const spanId = resolveLocationToSpan(rc.location || rc.causal_origin_location || rc.node_location || rc.causal_origin_node);
+    addTraceAnnotation(out, spanId, "root_cause", rc.reason || "");
+  });
+  return out;
+}
+
+function handleJudgeLocation(nodeId, loc, ctxKey, mode = "graph") {
+  const spanId = resolveLocationToSpan(loc) || resolveLocationToSpan(nodeId);
+  if (mode === "trace") {
+    if (spanId) focusTraceSpan(spanId);
+  } else {
+    switchTab("graph");
+    if (nodeId) highlightNode(nodeId);
+    else if (spanId) {
+      const node = nodesData.find(n => n.span_id === spanId);
+      if (node) highlightNode(node.id);
+    }
+  }
+  showSpanDrawer(spanId || loc, judgeCtxMap[ctxKey]);
+}
+
+function handleJudgeLocationPayload(payload, mode = "graph") {
+  const value = decodePayload(payload);
+  handleJudgeLocation(value.nodeId || "", value.loc || "", value.ctxKey || "", mode);
+}
+
+function findNodeBySpanOrId(loc) {
+  if (!loc) return null;
+  return (nodesData.find(n => n.span_id === loc) || nodesData.find(n => n.id === loc) || null)?.id ?? null;
+}
+
+// match module name like "final_answer" or "Step 1" against node content/label
+function findNodeByModule(mod) {
+  if (!mod) return null;
+  const m = mod.toLowerCase();
+  const hit = nodesData.find(n =>
+    (n.id || "").toLowerCase().includes(m) ||
+    (n.title || "").toLowerCase().includes(m)
+  );
+  return hit ? hit.id : null;
+}
+
+function highlightNode(id) {
+  if (!network) return;
+  network.selectNodes([id]);
+  network.focus(id, { scale: 1.3, animation: true });
+  showPropagationPath([id]);
+  const node = nodesData.find(n => n.id === id);
+  if (node) showSpanDrawer(node.span_id);
+}
+
+// current context for fix suggestion
+let currentFixContext = {};
+
+function showSpanDrawer(spanId, rootCauseCtx) {
+  const drawer = document.getElementById("span-drawer");
+  const content = document.getElementById("span-drawer-content");
+  const sp = spanId && spanIndex[spanId];
+  if (!sp) { drawer.style.display = "none"; return; }
+
+  if (rootCauseCtx) currentFixContext = rootCauseCtx;
+  else currentFixContext = {};
+  currentFixContext.spanId = spanId;
+  currentFixContext.span = sp;
+
+  const statusClass = (sp.status_code || "").toLowerCase() === "error" ? "err" : "ok";
+  const comp = sp.component;
+
+  let compHtml = "";
+  if (comp) {
+    compHtml = `<div class="comp-box">
+      <div class="comp-name">${escapeHtml(comp.component)}</div>
+      <div class="comp-file">${escapeHtml(comp.file)}</div>
+      <div class="comp-aspects">可修复点: ${escapeHtml((comp.fixable_aspects || []).join(" · "))}</div>
+    </div>`;
+  }
+
+  const ann = traceAnnotations[spanId];
+  const annHtml = ann ? `<div class="comp-box" style="border-color:#e94560;background:#201733">
+      <div class="comp-name" style="color:#e94560">诊断映射</div>
+      ${ann.root_causes.map((x, i) => `<div class="sp-row"><div class="sp-label">根因 ${i + 1}</div><div class="sp-val">${escapeHtml(x.text)}</div></div>`).join("")}
+      ${ann.errors.map((x, i) => `<div class="sp-row"><div class="sp-label">错误 ${i + 1}</div><div class="sp-val err">${escapeHtml(x.text)}</div></div>`).join("")}
+    </div>` : "";
+
+  const rows = [
+    ["Span Name", sp.span_name],
+    ["Span ID", `<span class="sp-id">${spanId}</span>`],
+    ["Status", sp.status_code || "—"],
+    sp.tool_name ? ["Tool", sp.tool_name] : null,
+    sp.input ? ["Input", sp.input] : null,
+    sp.output ? ["Output", sp.output] : null,
+  ].filter(Boolean);
+
+  content.innerHTML = annHtml + compHtml +
+    rows.map(([label, val]) => {
+      const safeVal = label === "Span ID" ? val : escapeHtml(val);
+      return (
+      `<div class="sp-row">
+        <div class="sp-label">${escapeHtml(label)}</div>
+        <div class="sp-val ${label === 'Status' ? statusClass : ''}">${safeVal}</div>
+      </div>`
+      );
+    }).join("") +
+    `<button class="fix-btn" id="fix-btn" onclick="requestFix()">获取修复建议</button>
+     <div id="fix-result"></div>`;
+
+  drawer.style.display = "block";
+}
+
+async function requestFix() {
+  const btn = document.getElementById("fix-btn");
+  const result = document.getElementById("fix-result");
+  btn.disabled = true;
+  btn.textContent = "分析中...";
+  result.innerHTML = "";
+  try {
+    const res = await fetch("/api/fix", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        span_id: currentFixContext.spanId,
+        span: currentFixContext.span,
+        root_cause: currentFixContext.root_cause || "",
+        fault_types: currentFixContext.fault_types || [],
+      }),
+    });
+    const data = await res.json();
+    if (data.error) { result.innerHTML = `<div class="sp-val err">${data.error}</div>`; return; }
+    result.innerHTML = `<div class="fix-box">${data.suggestion.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div>`;
+  } catch(e) {
+    result.innerHTML = `<div class="sp-val err">${e}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "获取修复建议";
+  }
+}
+
+function switchTab(tab) {
+  const isGraph = tab === 'graph';
+  document.getElementById("network").style.display = isGraph ? "block" : "none";
+  document.getElementById("trace-view").style.display = isGraph ? "none" : "block";
+  document.getElementById("tab-graph").classList.toggle("active", isGraph);
+  document.getElementById("tab-trace").classList.toggle("active", !isGraph);
+}
+
+let traceNodeCounter = 0;
+function renderTraceTree(spans) {
+  traceNodeCounter = 0;
+  traceSpanMap = {};
+  traceSpanNodeIds = {};
+  const body = spans.length ? spans.map(s => renderSpanNode(s)).join("") : `<div class="empty">没有可显示的 span</div>`;
+  document.getElementById("trace-view").innerHTML =
+    `<div style="position:sticky;top:0;background:#111315;padding:0 0 8px 0;z-index:5">
+      <button class="tab-btn" style="width:auto;padding:4px 8px" onclick="setTraceExpanded(true)">展开全部</button>
+      <button class="tab-btn" style="width:auto;padding:4px 8px" onclick="setTraceExpanded(false)">折叠全部</button>
+      <span style="color:#888;margin-left:8px">span: ${spans.length}</span>
+    </div>${body}`;
+}
+
+function renderSpanNode(span) {
+  const id = `tn_${traceNodeCounter++}`;
+  const spanId = span.span_id || "";
+  traceSpanMap[id] = spanId;
+  if (spanId) traceSpanNodeIds[spanId] = id;
+  const hasChildren = span.children && span.children.length > 0;
+  const status = (span.status_code || "").toLowerCase();
+  const statusCls = status === "error" ? "error" : status === "ok" ? "ok" : "unset";
+  const comp = span.component;
+  const compHtml = comp ? `<span class="tr-comp">[${escapeHtml(comp.layer)}]</span>` : "";
+  const ann = traceAnnotations[spanId];
+  const hasRc = ann && ann.root_causes.length;
+  const hasErr = ann && ann.errors.length;
+  const annClass = [hasRc ? "tr-has-rc" : "", hasErr ? "tr-has-error" : ""].filter(Boolean).join(" ");
+  const annTitle = ann ? escapeHtml(
+    [...ann.root_causes.map(x => `根因: ${x.text}`), ...ann.errors.map(x => `错误: ${x.text}`)].join("\n")
+  ) : "";
+  const badges = ann ? [
+    hasRc ? `<span class="tr-badge rc" title="${annTitle}">根因 ${ann.root_causes.length}</span>` : "",
+    hasErr ? `<span class="tr-badge err" title="${annTitle}">错误 ${ann.errors.length}</span>` : "",
+  ].join("") : "";
+  const detail = [
+    span.input ? `Input: ${span.input}` : "",
+    span.output ? `Output: ${span.output}` : "",
+  ].filter(Boolean).join("\n");
+
+  const toggle = hasChildren
+    ? `<span class="tr-toggle" onclick="toggleTrChildren('${id}')">▶</span>`
+    : `<span style="display:inline-block;width:14px"></span>`;
+
+  return `<div class="tr-node" id="${id}_node">
+    <div class="tr-row ${annClass}" onclick="toggleTrDetail('${id}_d');showTraceSpan('${id}')" style="cursor:pointer">
+      ${toggle}<span class="tr-name ${statusCls}">${escapeHtml(span.span_name || '(unnamed span)')}</span>
+      ${compHtml}
+      <span class="tr-sid">${escapeHtml(span.span_id || '')}</span>
+      ${badges}
+    </div>
+    ${detail ? `<div class="tr-detail" id="${id}_d">${escapeHtml(detail)}</div>` : ""}
+    ${hasChildren ? `<div class="tr-children" id="${id}" style="display:none">${span.children.map(c => renderSpanNode(c)).join("")}</div>` : ""}
+  </div>`;
+}
+
+function showTraceSpan(id) {
+  const spanId = traceSpanMap[id];
+  if (spanId) showSpanDrawer(spanId);
+}
+
+function focusTraceSpan(spanId) {
+  const id = traceSpanNodeIds[spanId];
+  if (!id) return false;
+  switchTab("trace");
+  const nodeEl = document.getElementById(`${id}_node`);
+  if (!nodeEl) return false;
+  let parent = nodeEl.parentElement;
+  while (parent) {
+    if (parent.classList && parent.classList.contains("tr-children")) {
+      parent.style.display = "block";
+      const toggle = parent.previousElementSibling?.querySelector(".tr-toggle");
+      if (toggle) toggle.textContent = "▼";
+    }
+    parent = parent.parentElement;
+  }
+  document.querySelectorAll(".tr-row.tr-focus").forEach(el => el.classList.remove("tr-focus"));
+  const row = nodeEl.querySelector(".tr-row");
+  if (row) row.classList.add("tr-focus");
+  nodeEl.scrollIntoView({ behavior: "smooth", block: "center" });
+  showSpanDrawer(spanId);
+  return true;
+}
+
+function setTraceExpanded(open) {
+  document.querySelectorAll(".tr-children").forEach(el => { el.style.display = open ? "block" : "none"; });
+  document.querySelectorAll(".tr-toggle").forEach(el => { el.textContent = open ? "▼" : "▶"; });
+}
+
+function toggleTrChildren(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const open = el.style.display !== "none";
+  el.style.display = open ? "none" : "block";
+  const toggle = el.previousElementSibling?.querySelector(".tr-toggle");
+  if (toggle) toggle.textContent = open ? "▶" : "▼";
+}
+
+function toggleTrDetail(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = el.style.display === "block" ? "none" : "block";
+}
+
+document.getElementById("monitor-refresh").addEventListener("click", loadLiveMonitoring);
+loadLiveMonitoring();
+</script>
+</body>
+</html>

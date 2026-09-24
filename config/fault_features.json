@@ -1,0 +1,95 @@
+{
+  "schema_version": "agent-tracer-fault-features-v1",
+  "description": "Agent Tracer 已实现的故障特征与证据来源目录",
+  "usage": "用于代码阅读、规则解释和诊断结果标注；特征是候选证据，不是单独的最终判因。",
+  "features": [
+    {
+      "id": "tool_execution_failure",
+      "category": "tool_execution",
+      "severity": "high",
+      "signals": ["span_status:error", "status_code_error", "success=false", "error field", "tool execution failed"],
+      "evidence_source": "semantic_trace_validator.classify_tool_result",
+      "related_violation_types": ["tool_execution_failure"]
+    },
+    {
+      "id": "http_failure",
+      "category": "tool_execution",
+      "severity": "high",
+      "signals": ["Status: 4xx", "Status: 5xx", "404", "403", "500", "unauthorized", "forbidden", "service unavailable"],
+      "evidence_source": "semantic_trace_validator.ToolCallValidator",
+      "related_violation_types": ["http_failure"]
+    },
+    {
+      "id": "argument_schema_error",
+      "category": "tool_contract",
+      "severity": "high",
+      "signals": ["required parameter missing", "invalid parameter shape", "schema mismatch"],
+      "evidence_source": "semantic_trace_validator._required_argument_violations",
+      "related_violation_types": ["missing_required_argument", "argument_result_mismatch"]
+    },
+    {
+      "id": "empty_or_malformed_result",
+      "category": "tool_contract",
+      "severity": "medium",
+      "signals": ["empty result", "invalid JSON", "format", "schema", "parameter"],
+      "evidence_source": "semantic_trace_validator.ToolCallValidator and agenttrace_target_pruning.TOOL_DIAGNOSTIC_KEYWORDS",
+      "related_violation_types": ["empty_tool_result"]
+    },
+    {
+      "id": "temporal_mismatch",
+      "category": "semantic_consistency",
+      "severity": "high",
+      "signals": ["requested date absent from result", "stale date", "wrong time window"],
+      "evidence_source": "semantic_trace_validator.ToolCallValidator",
+      "related_violation_types": ["temporal_mismatch"]
+    },
+    {
+      "id": "ungrounded_argument",
+      "category": "semantic_consistency",
+      "severity": "high_or_medium",
+      "signals": ["opaque identifier not in task", "opaque identifier not in prior tool evidence"],
+      "evidence_source": "semantic_trace_validator.ToolCallValidator",
+      "related_violation_types": ["ungrounded_tool_argument"]
+    },
+    {
+      "id": "evidence_propagation_failure",
+      "category": "semantic_consistency",
+      "severity": "context_dependent",
+      "signals": ["NOT_EXPOSED", "REJECTED", "result not consumed", "error evidence reaches final answer"],
+      "evidence_source": "semantic_trace_validator propagation reports",
+      "related_edge_types": ["SemanticOrigin", "SemanticValidation", "SemanticPropagation", "SemanticRejection", "EvidenceExposure"]
+    },
+    {
+      "id": "retry_recovery_failure",
+      "category": "agent_recovery",
+      "severity": "high",
+      "signals": ["retry", "again", "re-run", "rerun", "try another", "Retry edge"],
+      "evidence_source": "agenttrace_target_pruning._is_retry_node and graph edge types",
+      "related_labels": ["retry_or_recovery_failure"]
+    },
+    {
+      "id": "planning_action_drift",
+      "category": "agent_reasoning",
+      "severity": "medium_or_high",
+      "signals": ["need to", "should", "instead", "verify", "rethink", "planning/action bridge inconsistency"],
+      "evidence_source": "agenttrace_target_pruning planning and action context scoring",
+      "related_node_types": ["Planning", "Action", "Fact"]
+    },
+    {
+      "id": "terminal_answer_failure",
+      "category": "agent_outcome",
+      "severity": "high",
+      "signals": ["Error node", "invalid", "wrong", "contradiction", "no evidence", "hallucination", "final conclusion depends on error"],
+      "evidence_source": "agenttrace_target_pruning target selection and failure slicing",
+      "related_node_types": ["Conclusion", "Error"]
+    },
+    {
+      "id": "infrastructure_pressure",
+      "category": "infrastructure",
+      "severity": "context_dependent",
+      "signals": ["high CPU", "high memory", "disk pressure", "container or Kubernetes identity change", "high latency", "communication errors"],
+      "evidence_source": "multilayer_monitor and integrations/jiuwenswarm",
+      "related_layers": ["hardware", "virtualization", "communication", "application"]
+    }
+  ]
+}
